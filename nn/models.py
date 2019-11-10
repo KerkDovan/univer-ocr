@@ -1,4 +1,4 @@
-from .layers import Input
+from .layers import Input, Layer
 from .losses import SoftmaxCrossEntropy
 from .optimizers import Adam
 
@@ -63,14 +63,14 @@ class ModelConstructor:
         self.layer_constructors = []
 
     def add(self, layer_constructors):
-        if isinstance(layer_constructors, LayerConstructor):
+        if ((isinstance(layer_constructors, LayerConstructor) or
+             isinstance(layer_constructors, Layer))):
             self._add_one(layer_constructors)
             return
         for lc in layer_constructors:
             self._add_one(lc)
 
     def _add_one(self, layer_constructor):
-        assert isinstance(layer_constructor, LayerConstructor)
         self.layer_constructors.append(layer_constructor)
 
     def construct(self, input_shape=None, *args, **kwargs):
@@ -93,7 +93,16 @@ class ModelConstructor:
 
         input_shape = layers[0].input_shape
         for lc in self.layer_constructors[start_from:]:
-            layers.append(lc.construct(input_shape=input_shape))
+            if isinstance(lc, LayerConstructor):
+                layer = lc.construct(input_shape=input_shape)
+            elif isinstance(lc, Layer):
+                layer = lc
+            elif isinstance(lc, type):
+                layer = lc(input_shape=input_shape)
+            else:
+                raise TypeError(f'Expected LayerConstructor, Layer class or Layer instance, '
+                                f'found: {type(lc)}')
+            layers.append(layer)
             input_shape = layers[-1].get_output_shape(input_shape)
         model = self.model_class(layers=layers, *self.args, *args, **self.kwargs, **kwargs)
 

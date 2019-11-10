@@ -5,7 +5,7 @@ from itertools import cycle
 import numpy as np
 
 import nn.gradient_check as grad_check
-from nn.layers import Convolutional2D, Flatten, FullyConnected, Input
+from nn.layers import Convolutional2D, Flatten, FullyConnected, Input, Relu
 from nn.losses import SigmoidCrossEntropy, SoftmaxCrossEntropy
 from nn.models import LayerConstructor, ModelConstructor, Sequential
 from nn.regularizations import L1, L2
@@ -135,9 +135,13 @@ def main():
     constructor = ModelConstructor(Sequential, loss=SoftmaxCrossEntropy())
     constructor.add([
         LayerConstructor(Convolutional2D, (3, 3), out_channels=4, regularizer=L1(0.1)),
+        Relu,
         LayerConstructor(Convolutional2D, (3, 3), out_channels=5, padding=1),
+        Relu(),
         LayerConstructor(Convolutional2D, (3, 3), out_channels=6, padding=1, padding_value=0.5),
+        Relu(),
         LayerConstructor(Convolutional2D, (3, 3), out_channels=7, stride=2, regularizer=L2(0.1)),
+        Relu(),
         LayerConstructor(Flatten),
         LayerConstructor(FullyConnected, n_output=10)
     ])
