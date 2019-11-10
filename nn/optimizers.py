@@ -21,8 +21,10 @@ class Optimizer:
 
 
 class Adagrad(Optimizer):
-    def __init__(self, lr=0.01):
+    def __init__(self, lr=0.01, initial_accumulated=0):
+        super().__init__()
         self.lr = lr
+        self.initials = [initial_accumulated]
 
     def update(self, param):
         state = self._get_group(param).state
@@ -31,14 +33,17 @@ class Adagrad(Optimizer):
         param.value -= adaptive_lr * param.grad
 
     def _init_state(self):
-        return namedtuple('State', 'accumulated', defaults=[0])()
+        return namedtuple('State', 'accumulated', defaults=self.initials)()
 
 
 class Adam(Optimizer):
-    def __init__(self, lr=0.001, beta1=0.9, beta2=0.999):
+    def __init__(self, lr=0.001, beta1=0.9, beta2=0.999,
+                 initial_velocity=0, initial_accumulated=0):
+        super().__init__()
         self.lr = lr
         self.beta1 = beta1
         self.beta2 = beta2
+        self.initials = [initial_velocity, initial_accumulated]
 
     def update(self, param):
         state = self._get_group(param).state
@@ -48,14 +53,16 @@ class Adam(Optimizer):
         param.value -= adaptive_lr * state.velocity
 
     def _init_state(self):
-        return namedtuple('State', 'velocity accumulated', defaults=[0, 0])()
+        return namedtuple('State', 'velocity accumulated', defaults=self.initials)()
 
 
 class Momentum(Optimizer):
-    def __init__(self, lr, momentum=0):
+    def __init__(self, lr, momentum=0, initial_velocity=0):
+        super().__init__()
         self.lr = lr
         self.momentum = momentum
         self.velocity = 0
+        self.initials = [initial_velocity]
 
     def update(self, param):
         state = self._get_group(param).state
@@ -63,13 +70,15 @@ class Momentum(Optimizer):
         param.value += state.velocity
 
     def _init_state(self):
-        return namedtuple('State', 'velocity', defaults=[0])()
+        return namedtuple('State', 'velocity', defaults=self.initials)()
 
 
 class RMSProp(Optimizer):
-    def __init__(self, lr=0.01, rho=0.99):
+    def __init__(self, lr=0.01, rho=0.99, initial_accumulated=0):
+        super().__init__()
         self.lr = lr
         self.rho = rho
+        self.initials = [initial_accumulated]
 
     def update(self, param):
         state = self._get_group(param).state
@@ -78,4 +87,4 @@ class RMSProp(Optimizer):
         param.value -= adaptive_lr * param.grad
 
     def _init_state(self):
-        return namedtuple('State', 'accumulated', defaults=[0])()
+        return namedtuple('State', 'accumulated', defaults=self.initials)()

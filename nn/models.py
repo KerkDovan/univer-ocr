@@ -1,3 +1,7 @@
+from .losses import SoftmaxCrossEntropy
+from .optimizers import Adam
+
+
 class Model:
     def compute_loss_and_gradients(self, X, y):
         raise NotImplementedError()
@@ -17,7 +21,7 @@ class Model:
 
 
 class Sequential(Model):
-    def __init__(self, layers, optimizer, loss):
+    def __init__(self, layers, optimizer=Adam(), loss=SoftmaxCrossEntropy()):
         self.layers = layers
         self.optimizer = optimizer
         self.loss = loss
