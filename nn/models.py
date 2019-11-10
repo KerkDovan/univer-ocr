@@ -20,6 +20,9 @@ class BaseModel:
     def params(self):
         raise NotImplementedError()
 
+    def count_parameters(self):
+        raise NotImplementedError()
+
 
 class Sequential(BaseModel):
     def __init__(self, layers, optimizer=Adam(), loss=SoftmaxCrossEntropy()):
@@ -53,6 +56,9 @@ class Sequential(BaseModel):
             for name, param in layer.params().items()
         }
         return result
+
+    def count_parameters(self):
+        return sum([layer.count_parameters() for layer in self.layers])
 
 
 class ModelConstructor:

@@ -65,13 +65,14 @@ def main():
     print('Input Layer (N, M)')
     check_layer(Input((..., n_input, n_output)), X_fl)
 
-    print('Fully Connected Layer')
-    check_layer(FullyConnected(n_input, n_output), X_fc)
+    layer = FullyConnected(n_input, n_output)
+    print(f'Fully Connected Layer: {layer.count_parameters("w")} parameters')
+    check_layer(layer, X_fc)
 
     print('Fully Connected Layer - Param')
     check_layer(FullyConnected(n_input, n_output), X_fc, 'w')
 
-    print('Flatten Layer')
+    print(f'Flatten Layer: {Flatten().count_parameters()} parameters')
     check_layer(Flatten(), X_fl)
 
     print('L1 Regularization')
@@ -90,10 +91,10 @@ def main():
     layers_reg = [FullyConnected(n_sizes[i], n_sizes[i + 1], regularizer=regularizers[i])
                   for i in range(len(n_sizes) - 1)]
 
-    print('Sequential model with Softmax CE Loss')
+    model = Sequential(layers, loss=SoftmaxCrossEntropy())
+    print(f'Sequential model with Softmax CE Loss: {model.count_parameters()} parameters')
     y = np.array([np.roll([1] + [0] * (n_sizes[-1] - 1), np.random.randint(n_sizes[-1]))
                   for i in range(batch_size)])
-    model = Sequential(layers, loss=SoftmaxCrossEntropy())
     check_model(model, X, y)
 
     print('Sequential model with Softmax CE Loss and regularization', regularizers)
@@ -114,8 +115,9 @@ def main():
     ks = (4, 4)
     X_conv2d = np.random.randn(batch_size, h, w, in_ch)
 
-    print('Convolutional 2D Layer')
-    check_layer(Convolutional2D(ks, in_ch, out_ch), X_conv2d)
+    layer = Convolutional2D(ks, in_ch, out_ch)
+    print(f'Convolutional 2D Layer: {layer.count_parameters()} parameters')
+    check_layer(layer, X_conv2d)
 
     print('Convolutional 2D Layer with Padding')
     check_layer(Convolutional2D(ks, in_ch, out_ch, padding=1), X_conv2d)
@@ -147,7 +149,8 @@ def main():
     ])
     model = constructor.construct(input_shape=X_conv2d.shape)
 
-    print('Sequential model with Convolutional 2D Layers from Constructors')
+    print(f'Sequential model with Convolutional 2D Layers from Constructors: '
+          f'{model.count_parameters()} parameters')
     check_model(model, X_conv2d, y_conv2d)
 
     print(f'Correct: {correct_cnt}/{total_cnt}\nTotal time: {total_time}')

@@ -42,6 +42,11 @@ class Layer:
     def params(self):
         return {}
 
+    def count_parameters(self, param=None):
+        if param is not None:
+            return self.params()[param].value.size
+        return sum([param.value.size for param in self.params().values()])
+
     def regularize(self, weights):
         if self.reg is None:
             return 0
