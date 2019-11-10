@@ -8,9 +8,11 @@ from .optimizers import Adam
 
 class Layer:
     def __init__(self,
+                 input_shape=None,
                  initializer=kaiming_uniform,
                  regularizer=None,
                  optimizer=Adam()):
+        self.input_shape = input_shape
         self.initializer = initializer
         self.regularizer = regularizer
         self.optimizer = optimizer
@@ -33,6 +35,9 @@ class Layer:
 
     def clear_memory(self):
         self._mem = None
+
+    def get_output_shape(self, input_shape):
+        raise NotImplementedError()
 
     def params(self):
         return {}
@@ -67,20 +72,23 @@ class Param:
 
 
 class Convolutional2D(Layer):
-    def __init__(self, kernel_size, in_channels, out_channels,
+    def __init__(self, kernel_size, in_channels=None, out_channels=None,
                  padding=0, padding_value=0, stride=1,
                  w=None, bias=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         def tuplize(name, var):
             if isinstance(var, int):
-                return (var, var)
+                return var, var
             if isinstance(var, tuple) and len(var) == 2:
                 return var
             raise ValueError(f'{name} must be either int or tuple of length 2')
 
         self.kernel_size = tuplize('kernel_size', kernel_size)
-        self.in_channels = in_channels
+        if in_channels is None:
+            self.in_channels = self.input_shape[3]
+        else:
+            self.in_channels = in_channels
         self.out_channels = out_channels
         self.padding = tuplize('padding', padding)
         self.padding_value = padding_value
@@ -104,8 +112,8 @@ class Convolutional2D(Layer):
         ph, pw = self.padding
         sh, sw = self.stride
 
-        out_height = math.floor((height + 2 * ph - (kh - 1) - 1) / sh + 1)
-        out_width = math.floor((width + 2 * pw - (kw - 1) - 1) / sw + 1)
+        output_shape = self.get_output_shape(X.shape)
+        _, out_height, out_width, _ = output_shape
 
         if ph != 0 or pw != 0:
             nh, nw = height + 2 * ph, width + 2 * pw
@@ -115,7 +123,7 @@ class Convolutional2D(Layer):
 
         self._mem = X
 
-        result = np.zeros((batch_size, out_height, out_width, self.out_channels))
+        result = np.zeros(output_shape)
         bias_vec = self.bias * np.ones((batch_size, 1))
         new_shape = (batch_size, self.w_shape[0] - 1)
 
@@ -163,6 +171,18 @@ class Convolutional2D(Layer):
         self.clear_memory()
         return dx_total
 
+    def get_output_shape(self, input_shape):
+        batch_size, height, width, _ = input_shape
+
+        kh, kw = self.kernel_size
+        ph, pw = self.padding
+        sh, sw = self.stride
+
+        out_height = math.floor((height + 2 * ph - (kh - 1) - 1) / sh + 1)
+        out_width = math.floor((width + 2 * pw - (kw - 1) - 1) / sw + 1)
+
+        return batch_size, out_height, out_width, self.out_channels
+
     def params(self):
         return {'w': self.w}
 
@@ -170,23 +190,31 @@ class Convolutional2D(Layer):
 class Flatten(Layer):
     def forward(self, X):
         self._mem = X.shape
-        return np.reshape(X, (X.shape[0], np.product(X.shape[1:])))
+        return np.reshape(X, self.get_output_shape(X.shape))
 
     def backward(self, grad):
         reshaped = np.reshape(grad, self._mem)
         self.clear_memory()
         return reshaped
 
+    def get_output_shape(self, input_shape):
+        return input_shape[0], np.product(input_shape[1:])
+
 
 class FullyConnected(Layer):
-    def __init__(self, n_input, n_output, w=None, *args, **kwargs):
+    def __init__(self, n_input=None, n_output=None, w=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.n_input = n_input
+        if n_input is None:
+            self.n_input = self.input_shape[1]
+        else:
+            self.n_input = n_input
         self.n_output = n_output
         if w is None:
-            self.w = Param(self.initializer(n_input + 1, n_output), optimizer=self.optimizer)
+            self.w = Param(
+                self.initializer(self.n_input + 1, self.n_output),
+                optimizer=self.optimizer)
         else:
-            assert w.shape == (n_input + 1, n_output)
+            assert w.shape == (self.n_input + 1, self.n_output)
             self.w = Param(np.copy(w), optimizer=self.optimizer)
         self._init_optimizer()
 
@@ -205,8 +233,32 @@ class FullyConnected(Layer):
         self.clear_memory()
         return dx
 
+    def get_output_shape(self, input_shape):
+        return input_shape[0], self.n_output
+
     def params(self):
         return {'w': self.w}
+
+
+class Input(Layer):
+    def __init__(self, input_shape=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if isinstance(input_shape, int):
+            self.input_shape = (input_shape,)
+        elif isinstance(input_shape, tuple):
+            self.input_shape = input_shape
+        else:
+            raise TypeError('input_shape must be int or tuple')
+
+    def forward(self, X):
+        assert X.shape[1:] == self.input_shape[1:]
+        return X
+
+    def backward(self, grad):
+        return grad
+
+    def get_output_shape(self, input_shape):
+        return input_shape
 
 
 class Relu(Layer):
@@ -218,3 +270,6 @@ class Relu(Layer):
         result = grad * self._mem
         self.clear_memory()
         return result
+
+    def get_output_shape(self, input_shape):
+        return input_shape

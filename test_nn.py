@@ -5,9 +5,9 @@ from itertools import cycle
 import numpy as np
 
 import nn.gradient_check as grad_check
-from nn.layers import Convolutional2D, Flatten, FullyConnected
+from nn.layers import Convolutional2D, Flatten, FullyConnected, Input
 from nn.losses import SigmoidCrossEntropy, SoftmaxCrossEntropy
-from nn.models import Sequential
+from nn.models import LayerConstructor, ModelConstructor, Sequential
 from nn.regularizations import L1, L2
 
 correct_cnt = 0
@@ -58,6 +58,12 @@ def main():
 
     X_fc = np.random.randn(batch_size, n_input)
     X_fl = np.random.randn(batch_size, n_input, n_output)
+
+    print('Input Layer (N,)')
+    check_layer(Input((..., n_input)), X_fc)
+
+    print('Input Layer (N, M)')
+    check_layer(Input((..., n_input, n_output)), X_fl)
 
     print('Fully Connected Layer')
     check_layer(FullyConnected(n_input, n_output), X_fc)
@@ -126,17 +132,18 @@ def main():
     X_conv2d = np.random.randn(batch_size, 7, 7, 3)
     y_conv2d = np.array([np.roll([1] + [0] * 9, np.random.randint(10))
                          for i in range(batch_size)])
-    conv2d_layers = [
-        Convolutional2D((3, 3), 3, 4, regularizer=L1(0.1)),
-        Convolutional2D((3, 3), 4, 5, padding=1),
-        Convolutional2D((3, 3), 5, 6, padding=1, padding_value=0.5),
-        Convolutional2D((3, 3), 6, 7, stride=2, regularizer=L2(0.1)),
-        Flatten(),
-        FullyConnected(28, 10)
-    ]
-    model = Sequential(conv2d_layers, loss=SoftmaxCrossEntropy())
+    constructor = ModelConstructor(Sequential, loss=SoftmaxCrossEntropy())
+    constructor.add([
+        LayerConstructor(Convolutional2D, (3, 3), out_channels=4, regularizer=L1(0.1)),
+        LayerConstructor(Convolutional2D, (3, 3), out_channels=5, padding=1),
+        LayerConstructor(Convolutional2D, (3, 3), out_channels=6, padding=1, padding_value=0.5),
+        LayerConstructor(Convolutional2D, (3, 3), out_channels=7, stride=2, regularizer=L2(0.1)),
+        LayerConstructor(Flatten),
+        LayerConstructor(FullyConnected, n_output=10)
+    ])
+    model = constructor.construct(input_shape=X_conv2d.shape)
 
-    print('Sequential model with Convolutional 2D Layers')
+    print('Sequential model with Convolutional 2D Layers from Constructors')
     check_model(model, X_conv2d, y_conv2d)
 
     print(f'Correct: {correct_cnt}/{total_cnt}\nTotal time: {total_time}')
