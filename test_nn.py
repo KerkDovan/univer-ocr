@@ -5,7 +5,8 @@ from itertools import cycle
 import numpy as np
 
 import nn.gradient_check as grad_check
-from nn.layers import Convolutional2D, Flatten, FullyConnected, Input, Relu
+from nn.layers import (Convolutional2D, Flatten, FullyConnected, Input,
+                       MaxPool2D, Relu)
 from nn.losses import SigmoidCrossEntropy, SoftmaxCrossEntropy
 from nn.models import LayerConstructor, ModelConstructor, Sequential
 from nn.regularizations import L1, L2
@@ -131,17 +132,27 @@ def main():
     print('Convolutional 2D Layer with Padding and Stride')
     check_layer(Convolutional2D(ks, in_ch, out_ch, padding=1, stride=2), X_conv2d)
 
+    print('Max Pooling 2D Layer')
+    X_maxpool2d = np.reshape(np.array([
+        [1, 0, 1, 2],
+        [0, -1, -1, -1],
+        [-1, -1, 1, -2],
+    ]), (1, 3, 4, 1))
+    print(X_maxpool2d[0, :, :, 0])
+    print(MaxPool2D(2, ceil_mode=True).forward(X_maxpool2d)[0, :, :, 0])
+    check_layer(MaxPool2D(2), X_conv2d)
+
     X_conv2d = np.random.randn(batch_size, 7, 7, 3)
     y_conv2d = np.array([np.roll([1] + [0] * 9, np.random.randint(10))
                          for i in range(batch_size)])
     constructor = ModelConstructor(Sequential, loss=SoftmaxCrossEntropy())
     constructor.add([
         LayerConstructor(Convolutional2D, (3, 3), out_channels=4, regularizer=L1(0.1)),
-        Relu,
+        MaxPool2D(2),
         LayerConstructor(Convolutional2D, (3, 3), out_channels=5, padding=1),
-        Relu(),
+        LayerConstructor(MaxPool2D, 2),
         LayerConstructor(Convolutional2D, (3, 3), out_channels=6, padding=1, padding_value=0.5),
-        Relu(),
+        Relu,
         LayerConstructor(Convolutional2D, (3, 3), out_channels=7, stride=2, regularizer=L2(0.1)),
         Relu(),
         LayerConstructor(Flatten),

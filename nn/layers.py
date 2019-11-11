@@ -1,9 +1,34 @@
 import math
+from collections import Iterable
 
 import numpy as np
 
 from .initializers import kaiming_uniform
 from .optimizers import Adam
+
+
+def tuplize(name, var, length):
+    is_negative = False
+    result = None
+
+    if isinstance(var, int):
+        is_negative = var < 0
+        result = tuple(var for _ in range(length))
+
+    elif isinstance(var, Iterable):
+        tmp = tuple(var)
+        if len(tmp) == length and all(isinstance(x, int) for x in tmp):
+            is_negative = any(x < 0 for x in tmp)
+            result = tmp
+
+    if is_negative:
+        raise ValueError(f'{name} cannot be negative, found: {var}')
+    if result is None:
+        raise TypeError(
+            f'{name} must be either int or iterable of ints of length {length}, '
+            f'found {type(var)}')
+
+    return result
 
 
 class Layer:
@@ -82,22 +107,15 @@ class Convolutional2D(Layer):
                  w=None, bias=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        def tuplize(name, var):
-            if isinstance(var, int):
-                return var, var
-            if isinstance(var, tuple) and len(var) == 2:
-                return var
-            raise ValueError(f'{name} must be either int or tuple of length 2')
-
-        self.kernel_size = tuplize('kernel_size', kernel_size)
+        self.kernel_size = tuplize('kernel_size', kernel_size, 2)
         if in_channels is None:
             self.in_channels = self.input_shape[3]
         else:
             self.in_channels = in_channels
         self.out_channels = out_channels
-        self.padding = tuplize('padding', padding)
+        self.padding = tuplize('padding', padding, 2)
         self.padding_value = padding_value
-        self.stride = tuplize('stride', stride)
+        self.stride = tuplize('stride', stride, 2)
 
         self.w_shape = (np.prod(self.kernel_size) * self.in_channels + 1, self.out_channels)
 
@@ -171,7 +189,8 @@ class Convolutional2D(Layer):
                 dx_total[:, y:y + kh, x:x + kw, :] += dx
 
         self.w.grad += dw_total
-        dx_total = dx_total[:, ph:height - ph, pw:width - pw, :]
+        if ph != 0 or pw != 0:
+            dx_total = dx_total[:, ph:height - ph, pw:width - pw, :]
 
         self.clear_memory()
         return dx_total
@@ -264,6 +283,92 @@ class Input(Layer):
 
     def get_output_shape(self, input_shape):
         return input_shape
+
+
+class MaxPool2D(Layer):
+    def __init__(self, kernel_size, padding=0, stride=None, ceil_mode=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.kernel_size = tuplize('kernel_size', kernel_size, 2)
+        self.padding = tuplize('padding', padding, 2)
+        self.stride = self.kernel_size if stride is None else tuplize('stride', stride)
+        self.ceil_mode = ceil_mode
+
+    def forward(self, X):
+        batch_size, height, width, channels = X.shape
+
+        kh, kw = self.kernel_size
+        ph, pw = self.padding
+        sh, sw = self.stride
+
+        output_shape = self.get_output_shape(X.shape)
+        _, out_height, out_width, _ = output_shape
+
+        if ph != 0 or pw != 0:
+            nh, nw = height + 2 * ph, width + 2 * pw
+            padded = np.zeros((batch_size, nh, nw, channels))
+            padded[:, ph:nh - ph, pw:nw - pw, :] = X
+            X = padded
+
+        result = np.zeros(output_shape)
+        mask = np.zeros((batch_size, kh * out_height, kw * out_width, channels))
+
+        for y in range(out_height):
+            for x in range(out_width):
+                iy, ix = y * sh, x * sw
+                i = X[:, iy:iy + kh, ix:ix + kw, :]
+                max_el = np.max(i, axis=(1, 2))
+                max_el = np.reshape(max_el, (batch_size, 1, 1, channels))
+                submask = i == max_el
+                _, mh, mw, _ = submask.shape
+                my, mx = kh * y, kw * x
+                mask[:, my:my + mh, mx:mx + mw, :] = submask
+                result[:, y, x, :] += np.reshape(max_el, (batch_size, channels))
+
+        self._mem = mask, X.shape
+        return result
+
+    def backward(self, grad):
+        mask, input_shape = self._mem
+        batch_size, height, width, channels = input_shape
+        _, out_height, out_width, _ = grad.shape
+
+        kh, kw = self.kernel_size
+        ph, pw = self.padding
+        sh, sw = self.stride
+
+        result = np.zeros(input_shape)
+
+        for y in range(out_height):
+            for x in range(out_width):
+                ty, tx = sh * y, sw * x
+                my, mx = kh * y, kw * x
+                target = result[:, ty:ty + kh, tx:tx + kw, :]
+                _, th, tw, _ = target.shape
+                sub_shape = (batch_size, 1, 1, channels)
+                submask = mask[:, my:my + th, mx:mx + tw, :]
+                subgrad = np.reshape(grad[:, y, x, :], sub_shape)
+                subsum = np.reshape(np.sum(submask, axis=(1, 2)), sub_shape)
+                target += (subgrad / subsum) * submask
+
+        if ph != 0 or pw != 0:
+            result = result[:, ph:height - ph, pw:width - pw, :]
+
+        self.clear_memory()
+        return result
+
+    def get_output_shape(self, input_shape):
+        batch_size, height, width, channels = input_shape
+
+        kh, kw = self.kernel_size
+        ph, pw = self.padding
+        sh, sw = self.stride
+        ceil = math.ceil if self.ceil_mode else math.floor
+
+        out_height = ceil((height + 2 * ph - (kh - 1) - 1) / sh + 1)
+        out_width = ceil((width + 2 * pw - (kw - 1) - 1) / sw + 1)
+
+        return batch_size, out_height, out_width, channels
 
 
 class Relu(Layer):
