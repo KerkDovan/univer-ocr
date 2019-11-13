@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+
+
+{% block content %}
+
+<div>
+  <img src="{{url_for('main_bp.image', image_type='image')}}">
+  <!-- <img src="{{url_for('main_bp.image', image_type='mask')}}"> -->
+</div>
+
+{% endblock content %}
