@@ -10,8 +10,11 @@ generated = None
 @main_bp.route('/index')
 def index():
     global generated
-    generated = ig.generate(800, 800)
-    return render_template('index.html')
+    generated = ig.generate(800, 600)
+    context = {
+        'layer_names': list(generated.keys()),
+    }
+    return render_template('index.html', **context)
 
 
 @main_bp.route('/image/<image_type>')

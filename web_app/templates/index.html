@@ -1,11 +1,70 @@
 {% extends 'base.html' %}
 
 
+{% block styles %}
+
+<style type="text/css">
+
+.images-container {
+  position: relative;
+}
+
+.base-image {
+  opacity: 0;
+}
+
+.image {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+</style>
+
+{% endblock %}
+
+
 {% block content %}
 
-<div>
-  <img src="{{url_for('main_bp.image', image_type='image')}}">
-  <!-- <img src="{{url_for('main_bp.image', image_type='mask')}}"> -->
+<div class="images-container">
+  <img class="base-image" src="{{url_for('main_bp.image', image_type='image')}}">
+  {% for name in layer_names %}
+  <img class="image" src="{{url_for('main_bp.image', image_type=name)}}" id="{{name}}">
+  {% endfor %}
+</div>
+
+<div class="mt-1">
+  {% for name in layer_names %}
+  <div class="custom-control-inline custom-control custom-switch">
+    <input type="checkbox" class="custom-control-input" id="{{name}}_switch" checked>
+    <label class="custom-control-label" for="{{name}}_switch">{{name}}</label>
+  </div>
+  {% endfor %}
 </div>
 
 {% endblock content %}
+
+
+{% block scripts %}
+
+<script type="text/javascript">
+
+"use strict";
+
+window.onload = function() {
+  {{layer_names|safe}}.forEach(function(value) {
+    let switcher = $("#" + value + "_switch");
+    switcher.change(function() {
+      if (switcher[0].checked) {
+        $("#" + value).css("display", "block");
+      }
+      else {
+        $("#" + value).css("display", "none");
+      }
+    });
+  });
+}
+
+</script>
+
+{% endblock %}
