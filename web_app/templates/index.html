@@ -29,14 +29,14 @@
 <div class="images-container">
   <img class="base-image" src="{{url_for('main_bp.image', image_type='image')}}">
   {% for name in layer_names %}
-  <img class="image" src="{{url_for('main_bp.image', image_type=name)}}" id="{{name}}">
+  <img class="image" src="{{url_for('main_bp.image', image_type=name)}}" id="{{name}}" style="display: none;">
   {% endfor %}
 </div>
 
 <div class="mt-1">
   {% for name in layer_names %}
   <div class="custom-control-inline custom-control custom-switch">
-    <input type="checkbox" class="custom-control-input" id="{{name}}_switch" checked>
+    <input type="checkbox" class="custom-control-input" id="{{name}}_switch">
     <label class="custom-control-label" for="{{name}}_switch">{{name}}</label>
   </div>
   {% endfor %}
@@ -63,6 +63,7 @@ window.onload = function() {
       }
     });
   });
+  $("#image_switch").click();
 }
 
 </script>
