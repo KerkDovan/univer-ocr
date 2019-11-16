@@ -79,11 +79,19 @@ class LayeredImage:
                 f'{line}\nA', spacing=spacing
             )[1] - font.getsize('A')[1]
 
-        ones = np.ones((t_height, t_width))
+        ones = np.ones((t_height + 2, t_width + 2), dtype=np.uint8)
         x, y = None, None
-        while x is None or np.sum(self.mask[y:y + t_height, x:x + t_width] * ones) > 0:
+        retries = 0
+        while True:
             x = random.randint(20, self.width - t_width - 20)
             y = random.randint(0, self.height - t_height)
+            if np.sum(ones * self.mask[y:y + t_height + 2, x:x + t_width + 2]) == 0:
+                break
+            if retries > 100:
+                print(f'Number of retries exceeded')
+                return
+            retries += 1
+        x, y = x + 1, y + 1
 
         self._paragraph((x, y, x + t_width, y + t_height))
         self._updage_mask()
@@ -225,7 +233,7 @@ def generate(width, height, use_demo=False):
         ]
     ]
     texts = [text1, text2]
-    for _ in range(5):
+    for _ in range(6):
         layers.add_paragraph(random.choice(texts))
 
     return layers.get_images(), layers.get_demo()
