@@ -4,28 +4,7 @@ import string
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-
-RUSSIAN_LOWERCASE = u'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'
-RUSSIAN_UPPERCASE = u'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
-RUSSIAN = RUSSIAN_LOWERCASE + RUSSIAN_UPPERCASE
-CHARS = RUSSIAN + string.digits + string.ascii_letters + string.punctuation + ' '
-
-
-def safe_char(char):
-    assert len(char) == 1
-    if char not in CHARS:
-        return 'unknown'
-    if char not in string.punctuation + ' ':
-        return char
-    return {
-        '!': 'exclamation', '"': 'double_quote', '#': 'hash_sign', '$': 'dollar_sign',
-        '%': 'percent', '&': 'ampersand', '\'': 'single_quote', '(': 'op_parentheses',
-        ')': 'cl_parentheses', '*': 'asterisk', '+': 'plus', ',': 'comma', '-': 'minus',
-        '.': 'point', '/': 'slash', ':': 'colon', ';': 'semicolon', '<': 'less', '=': 'equal',
-        '>': 'more', '?': 'question', '@': 'at_sign', '[': 'op_square', '\\': 'backslash',
-        ']': 'cl_square', '^': 'caret', '_': 'underscore', '`': 'apostrophe', '{': 'op_curly',
-        '|': 'vertical_bar', '}': 'cl_curly', '~': 'tilde', ' ': 'space',
-    }.get(char, 'unknown')
+from ..primitives import CHARS, RUSSIAN, RUSSIAN_LOWERCASE, RUSSIAN_UPPERCASE, encode_char
 
 
 class LayeredImage:
@@ -38,7 +17,7 @@ class LayeredImage:
         'letter_spacing',
         'char_box',
         'char_box1',
-        *[f'char_box_{safe_char(c)}' for c in CHARS],
+        *[f'char_box_{encode_char(c)}' for c in CHARS],
     ]
     colors = {
         'image': (0, 0, 0, 255),
@@ -165,7 +144,7 @@ class LayeredImage:
                 position, char, fill=self.colors_demo['image'], font=font)
 
     def _box(self, char, coords):
-        char = safe_char(char)
+        char = encode_char(char)
         self.draw['char_box'].rectangle(coords, fill=self.colors['char_box'])
         self.draw['char_box_' + char].rectangle(
             coords, fill=self.colors['char_box'])
@@ -176,7 +155,7 @@ class LayeredImage:
                 coords, fill=self.colors_demo['char_box'])
 
     def _box1(self, char, coords):
-        char = safe_char(char)
+        char = encode_char(char)
         self.draw['char_box1'].rectangle(coords, fill=self.colors['char_box1'])
         if self.use_demo:
             self.draw_demo['char_box1'].rectangle(

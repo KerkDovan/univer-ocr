@@ -1,25 +1,11 @@
-from collections import namedtuple
-
 from flask import Blueprint, render_template, send_file
 
 from ..components import image_generator as ig
+from ..components.primitives import FONTS_LIST
 
 main_bp = Blueprint('main_bp', __name__)
 
 generated = None
-
-Font = namedtuple('Font', 'name normal bold italic bold_italic')
-used_fonts = [
-    Font('Arial', 'arial.ttf', 'arialbd.ttf', 'ariali.ttf', 'arialbi.ttf'),
-    Font('Arial Narrow', 'ARIALN.TTF', 'ARIALNB.TTF', 'ARIALNI.TTF', 'ARIALNBI.TTF'),
-    Font('Calibri', 'calibri.ttf', 'calibrib.ttf', 'calibrii.ttf', 'calibriz.ttf'),
-    Font('Calibri Light', 'calibril.ttf', None, 'calibrili.ttf', None),
-    Font('Cambria', 'cambria.ttc', 'cambriab.ttf', 'cambriai.ttf', 'cambriaz.ttf'),
-    Font('Comic Sans', 'comic.ttf', 'comicbd.ttf', 'comici.ttf', 'comicz.ttf'),
-    Font('Consolas', 'consola.ttf', 'consolab.ttf', 'consolai.ttf', 'consolaz.ttf'),
-    Font('Times New Roman', 'times.ttf', 'timesbd.ttf', 'timesi.ttf', 'timesbi.ttf'),
-    Font('Verdana', 'verdana.ttf', 'verdanab.ttf', 'verdanai.ttf', 'verdanaz.ttf'),
-]
 
 
 @main_bp.route('/')
@@ -44,6 +30,6 @@ def image(image_type):
 @main_bp.route('/fonts')
 def fonts():
     context = {
-        'fonts': used_fonts,
+        'fonts': FONTS_LIST,
     }
     return render_template('fonts.html', **context)
