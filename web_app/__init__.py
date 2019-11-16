@@ -1,13 +1,6 @@
-import importlib
-import sys
-from pathlib import Path
-
 from flask import Flask
 
 from .config import Config
-
-sys.path.append(Path('..', 'image_generator'))
-image_generator = importlib.import_module('image_generator')
 
 
 def create_app():

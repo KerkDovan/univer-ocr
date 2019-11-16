@@ -4,12 +4,12 @@ from itertools import cycle
 
 import numpy as np
 
-import nn.gradient_check as grad_check
-from nn.layers import (Convolutional2D, Flatten, FullyConnected, Input,
-                       MaxPool2D, Relu)
-from nn.losses import SigmoidCrossEntropy, SoftmaxCrossEntropy
-from nn.models import LayerConstructor, ModelConstructor, Sequential
-from nn.regularizations import L1, L2
+import web_app.components.nn.gradient_check as grad_check
+from web_app.components.nn.layers import (
+    Convolutional2D, Flatten, FullyConnected, Input, MaxPool2D, Relu)
+from web_app.components.nn.losses import SigmoidCrossEntropy, SoftmaxCrossEntropy
+from web_app.components.nn.models import LayerConstructor, ModelConstructor, Sequential
+from web_app.components.nn.regularizations import L1, L2
 
 correct_cnt = 0
 total_cnt = 0

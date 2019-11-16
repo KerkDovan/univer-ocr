@@ -2,7 +2,7 @@ from collections import namedtuple
 
 from flask import Blueprint, render_template, send_file
 
-from web_app import image_generator as ig
+from ..components import image_generator as ig
 
 main_bp = Blueprint('main_bp', __name__)
 
