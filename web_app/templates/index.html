@@ -19,6 +19,10 @@
   left: 0;
 }
 
+.base-image, .image {
+  width: 100%;
+}
+
 </style>
 
 {% endblock %}
@@ -31,6 +35,11 @@
   {% for name in layer_names %}
   <img class="image" src="{{url_for('main_bp.image', image_type=name)}}" id="{{name}}" style="display: none;">
   {% endfor %}
+</div>
+
+<div class="mt-1">
+  <button class="btn btn-sm btn-outline-success" id="show_all">Show all</button>
+  <button class="btn btn-sm btn-outline-danger" id="reset">Reset</button>
 </div>
 
 <div class="mt-1">
@@ -64,6 +73,19 @@ window.onload = function() {
     });
   });
   $("#image_switch").click();
+  $("#show_all").click(function() {
+    {{layer_names|safe}}.forEach(function(value) {
+      $("#" + value + "_switch").prop("checked", true);
+      $("#" + value + "_switch").change();
+    });
+  });
+  $("#reset").click(function() {
+    {{layer_names|safe}}.forEach(function(value) {
+      $("#" + value + "_switch").prop("checked", false);
+      $("#" + value + "_switch").change();
+    });
+    $("#image_switch").click();
+  });
 }
 
 </script>

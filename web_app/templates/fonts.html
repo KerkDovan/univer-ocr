@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+
+
+{% block content %}
+
+<table class="table table-sm">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Normal</th>
+      <th>Bold</th>
+      <th>Italic</th>
+      <th>Bold Italic</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in fonts %}
+    <tr>
+      <td>{{f.name}}</td>
+      <td>{{f.normal}}</td>
+      <td>{{f.bold}}</td>
+      <td>{{f.italic}}</td>
+      <td>{{f.bold_italic}}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock content %}
