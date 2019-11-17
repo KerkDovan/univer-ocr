@@ -83,8 +83,8 @@ class LayeredImage:
         x, y = None, None
         retries = 0
         while True:
-            x = random.randint(20, self.width - t_width - 20)
-            y = random.randint(0, self.height - t_height)
+            x = random.randint(20, self.width - (t_width + 2) - 20)
+            y = random.randint(0, self.height - (t_height + 2))
             if np.sum(ones * self.mask[y:y + t_height + 2, x:x + t_width + 2]) == 0:
                 break
             if retries > 100:
