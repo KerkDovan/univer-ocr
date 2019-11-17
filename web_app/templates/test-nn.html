@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+
+{% block styles %}
+
+<style type="text/css">
+  #messages {
+    font-family: 'Courier New', Courier, monospace;
+  }
+</style>
+
+{% endblock %}
+
+
+{% block content %}
+
+<button class="mb-3 btn btn-sm btn-primary" id="start-btn">Start</button>
+
+<div>
+  <textarea class="form-control" id="messages" rows="30" readonly></textarea>
+</div>
+
+{% endblock content %}
+
+
+{% block scripts %}
+
+<script type="text/javascript">
+
+"use strict";
+
+window.onload = function() {
+  let socket = io.connect("ws://127.0.0.1/test-nn-ws");
+  socket.on('connect', function() {
+    socket.emit('message', 'U r lalka desu!');
+  });
+  socket.on('message', function(message) {
+    $("#messages").append(message);
+    document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
+  });
+
+  $("#start-btn").click(function() {
+    socket.emit("start")
+  })
+}
+
+</script>
+
+{% endblock %}

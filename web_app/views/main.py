@@ -1,9 +1,8 @@
-from flask import Blueprint, render_template, send_file
+from flask import render_template, send_file
 
 from ..components import image_generator as ig
 from ..components.primitives import FONTS_LIST
-
-main_bp = Blueprint('main_bp', __name__)
+from . import main_bp
 
 generated = None
 
@@ -33,3 +32,8 @@ def fonts():
         'fonts': FONTS_LIST,
     }
     return render_template('fonts.html', **context)
+
+
+@main_bp.route('/test-nn')
+def test_nn():
+    return render_template('test-nn.html')

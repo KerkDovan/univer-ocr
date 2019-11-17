@@ -16,7 +16,10 @@
     <a href="{{url_for('main_bp.index')}}" class="navbar-brand">
       Univer OCR
     </a>
-    <a href="{{url_for('main_bp.fonts')}}">Fonts</a>
+    <div>
+      <a href="{{url_for('main_bp.fonts')}}">Fonts</a>
+      <a href="{{url_for('main_bp.test_nn')}}">Test NN</a>
+    </div>
   </nav>
 
   <div class="mt-4 col-12 col-lg-10 offset-lg-1 col-xl-8 offset-xl-2">
@@ -31,6 +34,7 @@
   <script src="{{url_for('static', filename='js/bootstrap.min.js')}}"></script>
   <script src="{{url_for('static', filename='js/bs-custom-file-input.min.js')}}"></script>
   <script src="{{url_for('static', filename='js/js.cookie.js')}}"></script>
+  <script src="{{url_for('static', filename='js/socket.io.js')}}"></script>
   <script src="{{url_for('static', filename='js/script.js')}}"></script>
   {% block scripts %}
   {% endblock %}
