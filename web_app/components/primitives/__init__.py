@@ -73,7 +73,7 @@ FONTS_LIST = [
     Font('Calibri', 'calibri.ttf', 'calibrib.ttf', 'calibrii.ttf', 'calibriz.ttf'),
     Font('Calibri Light', 'calibril.ttf', None, 'calibrili.ttf', None),
     Font('Cambria', 'cambria.ttc', 'cambriab.ttf', 'cambriai.ttf', 'cambriaz.ttf'),
-    Font('Comic Sans', 'comic.ttf', 'comicbd.ttf', 'comici.ttf', 'comicz.ttf'),
+    Font('Comic Sans MS', 'comic.ttf', 'comicbd.ttf', 'comici.ttf', 'comicz.ttf'),
     Font('Consolas', 'consola.ttf', 'consolab.ttf', 'consolai.ttf', 'consolaz.ttf'),
     Font('Times New Roman', 'times.ttf', 'timesbd.ttf', 'timesi.ttf', 'timesbi.ttf'),
     Font('Verdana', 'verdana.ttf', 'verdanab.ttf', 'verdanai.ttf', 'verdanaz.ttf'),

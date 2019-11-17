@@ -1,6 +1,38 @@
 {% extends 'base.html' %}
 
 
+{% block styles %}
+
+<style type="text/css">
+
+{% for f in fonts %}
+.font_{{f.normal_path[:-4]}} {
+  font-family: '{{f.name}}';
+}
+{% endfor %}
+
+.font_name {
+  font-family: initial;
+}
+
+.font_italic {
+  font-style: italic;
+}
+
+.font_bold {
+  font-weight: bold;
+}
+
+.font_bold_italic {
+  font-weight: bold;
+  font-style: italic;
+}
+
+</style>
+
+{% endblock %}
+
+
 {% block content %}
 
 <table class="table table-sm">
@@ -8,19 +40,19 @@
     <tr>
       <th>Name</th>
       <th>Normal</th>
-      <th>Bold</th>
       <th>Italic</th>
+      <th>Bold</th>
       <th>Bold Italic</th>
     </tr>
   </thead>
   <tbody>
     {% for f in fonts %}
-    <tr>
-      <td>{{f.name}}</td>
-      <td>{{f.normal_path}}</td>
-      <td>{{f.bold_path}}</td>
-      <td>{{f.italic_path}}</td>
-      <td>{{f.bold_italic_path}}</td>
+    <tr class="font_{{f.normal_path[:-4]}}">
+      <td class="font_name">{{f.name}}</td>
+      <td class="font_normal">{{f.normal_path or ''}}</td>
+      <td class="font_italic">{{f.italic_path or ''}}</td>
+      <td class="font_bold">{{f.bold_path or ''}}</td>
+      <td class="font_bold_italic">{{f.bold_italic_path or ''}}</td>
     </tr>
     {% endfor %}
   </tbody>
