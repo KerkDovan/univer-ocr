@@ -16,6 +16,9 @@
     <a href="{{url_for('main_bp.index')}}" class="navbar-brand">
       Univer OCR
     </a>
+    {% if time_consumed %}
+    <div class="navbar-text">Time consumed: {{time_consumed}}</div>
+    {% endif %}
     <div>
       <a class="mr-3" href="{{url_for('main_bp.test_nn')}}">Test NN</a>
       <a class="mr-3" href="{{url_for('main_bp.chars')}}">Chars</a>

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from flask import render_template, send_file
 
 from ..components import image_generator as ig
@@ -11,8 +13,10 @@ generated = None
 @main_bp.route('/index')
 def index():
     global generated
+    ts = datetime.now()
     generated = ig.generate(1920, 1080, True)[1]
     context = {
+        'time_consumed': datetime.now() - ts,
         'layer_names': list(generated.keys()),
     }
     return render_template('index.html', **context)
