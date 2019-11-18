@@ -3,6 +3,7 @@ from datetime import datetime
 from flask import redirect, render_template, request, send_file, url_for
 
 from ..components import image_generator as ig
+from ..components.interpreter import interpret
 from ..components.primitives import CHARS, FONTS_LIST, encode_char
 from . import main_bp
 
@@ -65,3 +66,17 @@ def fonts():
 @main_bp.route('/test-nn')
 def test_nn():
     return render_template('test-nn.html')
+
+
+@main_bp.route('/interpret_data')
+def interpret_data():
+    global raw, demo
+    ts = datetime.now()
+    if raw is None:
+        generate()
+    data = interpret(raw)
+    context = {
+        'time_consumed': datetime.now() - ts,
+        'data': data,
+    }
+    return render_template('interpret_data.html', **context)

@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+
+{% block styles %}
+
+<style type="text/css">
+
+.images-container {
+  position: relative;
+}
+
+.base-image {
+  opacity: 0;
+}
+
+.image {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.base-image, .image {
+  width: 100%;
+}
+
+</style>
+
+{% endblock %}
+
+
+{% block content %}
+
+<!-- <div class="images-container">
+  <img class="base-image" src="{{url_for('main_bp.image', mode='demo', image_type='image')}}">
+  {% for name in layer_names %}
+  <img class="image" src="{{url_for('main_bp.image', mode='demo', image_type=name)}}" id="{{name}}" style="display: none;">
+  {% endfor %}
+</div> -->
+
+{% for key, value in data.items() %}
+<div>{{key}}: {{value}}</div>
+{% endfor %}
+
+{% endblock content %}
