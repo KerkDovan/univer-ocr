@@ -63,7 +63,7 @@ class LayeredImage:
             for name, layer in self.demo.items()
         }
 
-    def get_images(self):
+    def get_raw(self):
         return self.layers
 
     def get_demo(self):
@@ -236,4 +236,4 @@ def generate(width, height, use_demo=False):
     for _ in range(6):
         layers.add_paragraph(random.choice(texts))
 
-    return layers.get_images(), layers.get_demo()
+    return layers.get_raw(), layers.get_demo()

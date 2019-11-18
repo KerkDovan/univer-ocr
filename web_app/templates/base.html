@@ -20,9 +20,12 @@
     <div class="navbar-text">Time consumed: {{time_consumed}}</div>
     {% endif %}
     <div>
-      <a class="mr-3" href="{{url_for('main_bp.test_nn')}}">Test NN</a>
+      <a class="mr-3" href="{{url_for('main_bp.generate_new')}}">Generate</a>
+      <a class="mr-3" href="{{url_for('main_bp.view_layers', mode='demo')}}">Demo</a>
+      <a class="mr-3" href="{{url_for('main_bp.view_layers', mode='raw')}}">Raw</a>
       <a class="mr-3" href="{{url_for('main_bp.chars')}}">Chars</a>
       <a class="mr-3" href="{{url_for('main_bp.fonts')}}">Fonts</a>
+      <a class="mr-3" href="{{url_for('main_bp.test_nn')}}">Test NN</a>
     </div>
   </nav>
 
