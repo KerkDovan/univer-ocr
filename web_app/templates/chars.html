@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+
+{% block styles %}
+
+<style type="text/css">
+
+#chars>button {
+  color: black;
+  border-color: lightgray;
+}
+
+#chars>button:hover {
+  color: white;
+  border-color: #007bff;
+  background: #007bff;
+}
+
+</style>
+
+{% endblock %}
+
+
+{% block content %}
+
+<div id="chars" class="d-flex flex-wrap">
+  {% for char, title in chars.items() %}
+  <button class="btn m-1" title="{{title}}">{{char}}</button>
+  {% endfor %}
+</div>
+
+{% endblock content %}
