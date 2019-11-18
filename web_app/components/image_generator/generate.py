@@ -79,19 +79,22 @@ class LayeredImage:
                 f'{line}\nA', spacing=spacing
             )[1] - font.getsize('A')[1]
 
-        ones = np.ones((t_height + 2, t_width + 2), dtype=np.uint8)
+        margin = 3
+        margin2 = 2 * margin
+        ones = np.ones((t_height + margin2, t_width + margin2), dtype=np.uint8)
         x, y = None, None
         retries = 0
         while True:
-            x = random.randint(20, self.width - (t_width + 2) - 20)
-            y = random.randint(0, self.height - (t_height + 2))
-            if np.sum(ones * self.mask[y:y + t_height + 2, x:x + t_width + 2]) == 0:
+            left_margin = 20
+            x = random.randint(left_margin, self.width - (t_width + margin2) - left_margin)
+            y = random.randint(0, self.height - (t_height + margin2))
+            if np.sum(ones * self.mask[y:y + t_height + margin2, x:x + t_width + margin2]) == 0:
                 break
             if retries > 100:
                 print(f'Number of retries exceeded')
                 return
             retries += 1
-        x, y = x + 1, y + 1
+        x, y = x + margin, y + margin
 
         self._paragraph((x, y, x + t_width, y + t_height))
         self._updage_mask()
