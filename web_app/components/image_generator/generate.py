@@ -15,8 +15,8 @@ class LayeredImage:
         'line_center',
         'line_bottom',
         'letter_spacing',
-        'char_box',
-        'char_box1',
+        'char_mask_box',
+        'char_full_box',
         *[f'char_box_{encode_char(c)}' for c in CHARS],
     ]
     colors = {
@@ -30,8 +30,8 @@ class LayeredImage:
         'line_center': (0, 0, 200, 150),
         'line_bottom': (0, 200, 0, 100),
         'letter_spacing': (200, 0, 200, 100),
-        'char_box': (200, 200, 0, 100),
-        'char_box1': (200, 200, 0, 100),
+        'char_mask_box': (200, 200, 0, 100),
+        'char_full_box': (200, 200, 0, 100),
     }
 
     def __init__(self, width, height, bg_color, use_demo):
@@ -129,8 +129,8 @@ class LayeredImage:
                 ch_offset_x = font.getoffset(char)[0]
 
                 self._char(char, (x + ch_l - ch_offset_x, y + dy), font)
-                self._box(char, (x + ch_l, ch_t, x + ch_r, ch_b))
-                self._box1(char, (x + ch_l, y_ascent, x + ch_r, y_descent))
+                self._mask_box(char, (x + ch_l, ch_t, x + ch_r, ch_b))
+                self._full_box(char, (x + ch_l, y_ascent, x + ch_r, y_descent))
 
                 if i == len(line) - 1:
                     continue
@@ -151,23 +151,23 @@ class LayeredImage:
             self.draw_demo['image'].text(
                 position, char, fill=self.colors_demo['image'], font=font)
 
-    def _box(self, char, coords):
+    def _mask_box(self, char, coords):
         char = encode_char(char)
-        self.draw['char_box'].rectangle(coords, fill=self.colors['char_box'])
-        self.draw['char_box_' + char].rectangle(
-            coords, fill=self.colors['char_box'])
+        self.draw['char_mask_box'].rectangle(coords, fill=self.colors['char_mask_box'])
         if self.use_demo:
-            self.draw_demo['char_box'].rectangle(
-                coords, fill=self.colors_demo['char_box'])
-            self.draw_demo['char_box_' + char].rectangle(
-                coords, fill=self.colors_demo['char_box'])
+            self.draw_demo['char_mask_box'].rectangle(
+                coords, fill=self.colors_demo['char_mask_box'])
 
-    def _box1(self, char, coords):
+    def _full_box(self, char, coords):
         char = encode_char(char)
-        self.draw['char_box1'].rectangle(coords, fill=self.colors['char_box1'])
+        self.draw['char_full_box'].rectangle(coords, fill=self.colors['char_full_box'])
+        self.draw['char_box_' + char].rectangle(
+            coords, fill=self.colors['char_mask_box'])
         if self.use_demo:
-            self.draw_demo['char_box1'].rectangle(
-                coords, fill=self.colors_demo['char_box1'])
+            self.draw_demo['char_full_box'].rectangle(
+                coords, fill=self.colors_demo['char_full_box'])
+            self.draw_demo['char_box_' + char].rectangle(
+                coords, fill=self.colors_demo['char_mask_box'])
 
     def _letter_spacing(self, coords):
         self.draw['letter_spacing'].rectangle(coords, fill=self.colors['letter_spacing'])
@@ -219,7 +219,7 @@ def generate(width, height, use_demo=False):
             (string.ascii_lowercase, 0),
             (string.ascii_uppercase, 0),
             (string.punctuation + ' ', 0),
-            ('jklmnopqЙЁ_-^', 0),
+            ('jjjjjjjkkkkklmnopqЙЁ_-^', 0),
         ]
     ]
     text2 = [
