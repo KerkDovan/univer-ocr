@@ -10,9 +10,9 @@ from . import main_bp
 raw, demo = None, None
 
 
-def generate():
+def generate_demo():
     global raw, demo
-    raw, demo = ig.generate(1920, 1080, True)
+    raw, demo = ig.generate_demo(1920, 1080)
 
 
 @main_bp.route('/')
@@ -23,7 +23,7 @@ def index():
 
 @main_bp.route('/generate_new')
 def generate_new():
-    generate()
+    generate_demo()
     return redirect(request.referrer or url_for('main_bp.index'))
 
 
@@ -31,7 +31,7 @@ def generate_new():
 def view_layers(mode):
     ts = datetime.now()
     if demo is None or raw is None:
-        generate()
+        generate_demo()
     images = demo if mode == 'demo' else raw
     context = {
         'time_consumed': datetime.now() - ts,
@@ -73,7 +73,7 @@ def interpret_data():
     global raw, demo
     ts = datetime.now()
     if raw is None:
-        generate()
+        generate_demo()
     data = interpret(raw)
     context = {
         'time_consumed': datetime.now() - ts,

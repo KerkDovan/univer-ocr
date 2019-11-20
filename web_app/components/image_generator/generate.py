@@ -1,10 +1,12 @@
 import random
-import string
+from textwrap import wrap
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
-from ..primitives import CHARS, RUSSIAN, RUSSIAN_LOWERCASE, RUSSIAN_UPPERCASE, encode_char
+from faker import Faker
+
+from ..primitives import CHARS, FONTS_LIST, encode_char
 
 
 class LayeredImage:
@@ -18,6 +20,7 @@ class LayeredImage:
         'char_mask_box',
         'char_full_box',
         *[f'char_box_{encode_char(c)}' for c in CHARS],
+        'char_box_unknown',
     ]
     colors = {
         'image': (0, 0, 0, 255),
@@ -34,7 +37,7 @@ class LayeredImage:
         'char_full_box': (200, 200, 0, 100),
     }
 
-    def __init__(self, width, height, bg_color, use_demo):
+    def __init__(self, width, height, bg_color, use_demo=False):
         self.width, self.height = width, height
         self.bg_color = bg_color
         self.use_demo = use_demo
@@ -70,10 +73,14 @@ class LayeredImage:
     def get_demo(self):
         return self.demo
 
-    def add_paragraph(self, text):
+    def add_paragraph(self, text, font):
+        spacing = font.size // 2
+        ascent, descent = font.getmetrics()
+        M_height, x_height = font.getmask('M').size[1], font.getmask('x').size[1]
+        height = font.font.getsize(CHARS)[0][1]
+
         t_width, t_height = 0, 0
-        for line, font in text:
-            spacing = font.size // 2
+        for line in text:
             offset_x, _ = font.getoffset(line + CHARS)
             t_width = max(t_width, font.font.getsize(line)[0][0] + offset_x)
             t_height += font.getsize_multiline(
@@ -87,8 +94,13 @@ class LayeredImage:
         retries = 0
         while True:
             left_margin = 20
-            x = random.randint(left_margin, self.width - (t_width + margin2) - left_margin)
-            y = random.randint(0, self.height - (t_height + margin2))
+            rand_width = self.width - (t_width + margin2) - left_margin
+            rand_height = self.height - (t_height + margin2)
+            if rand_width < left_margin or rand_height < 0:
+                print(f'Paragraph is too big for the image')
+                return
+            x = random.randint(left_margin, rand_width)
+            y = random.randint(0, rand_height)
             if np.sum(ones * self.mask[y:y + t_height + margin2, x:x + t_width + margin2]) == 0:
                 break
             if retries > 100:
@@ -101,11 +113,7 @@ class LayeredImage:
         self._updage_mask()
 
         dy = 0
-        for line, font in text:
-            spacing = font.size // 2
-            ascent, descent = font.getmetrics()
-            M_height, x_height = font.getmask('M').size[1], font.getmask('x').size[1]
-            height = font.font.getsize(CHARS)[0][1]
+        for line in text:
             width = font.font.getsize(line)[0][0]
             offset_x, offset_y = font.getoffset(line + CHARS)
 
@@ -209,35 +217,28 @@ class LayeredImage:
         self.mask = np.array(self.layers['paragraph'])
 
 
-def generate(width, height, use_demo=False):
-    layers = LayeredImage(width, height, (200, 200, 200, 255), use_demo)
+def random_font():
+    style = random.choice(['normal', 'bold', 'italic', 'bold_italic'])
+    font = None
+    while font is None:
+        font = getattr(random.choice(FONTS_LIST), style)
+        font = font(size=random.randint(12, 48))
+    return font
 
-    fontname = 'times.ttf'
-    basefontsize = 32
-    text1 = [
-        (line, ImageFont.truetype(fontname, basefontsize + add))
-        for line, add in [
-            (RUSSIAN_LOWERCASE[:-5], 0),
-            (RUSSIAN_LOWERCASE[-5:] + RUSSIAN_UPPERCASE[:-13], 0),
-            (RUSSIAN[-13:] + string.digits, 0),
-            (string.ascii_lowercase, 0),
-            (string.ascii_uppercase, 0),
-            (string.punctuation + ' ', 0),
-            ('jjjjjjjkkkkklmnopqЙЁ_-^', 0),
-        ]
-    ]
-    text2 = [
-        (line, ImageFont.truetype(fontname, basefontsize + add))
-        for line, add in [
-            (u'Съешь же ещё этих мягких', 0),
-            (u'французских булок, да выпей чаю.', 0),
-            (u'The quick brown fox ' + string.digits, 0),
-            (u'jumps over the lazy dog.', 0),
-            (string.punctuation, 0),
-        ]
-    ]
-    texts = [text1, text2]
-    for _ in range(6):
-        layers.add_paragraph(random.choice(texts))
 
+def random_text():
+    if np.random.choice([True, False], p=[0.1, 0.9]):
+        text = ' '.join(
+            ''.join(random.choice(CHARS) for i in range(random.randint(1, 10)))
+            for j in range(random.randint(3, 30)))
+    else:
+        fake = Faker(random.choice(['la', 'en_US', 'ru_RU']))
+        text = fake.paragraph(nb_sentences=random.randint(3, 10))
+    return wrap(text, random.randint(30, 100))
+
+
+def generate_demo(width, height):
+    layers = LayeredImage(width, height, (200, 200, 200, 255), use_demo=True)
+    for _ in range(30):
+        layers.add_paragraph(random_text(), random_font())
     return layers.get_raw(), layers.get_demo()
