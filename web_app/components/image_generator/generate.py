@@ -138,7 +138,7 @@ class LayeredImage:
                 if i == len(line) - 1:
                     continue
 
-                self._letter_spacing((x + ch_r - 2, y_ascent, x + ch_r + 2, y_descent))
+                self._letter_spacing((x + ch_r, y_ascent, x + ch_r + 1, y_descent))
 
             dy += font.getsize_multiline(f'{line}\nA', spacing=spacing)[1] - font.getsize('A')[1]
 
