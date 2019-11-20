@@ -31,7 +31,7 @@ def tuplize(name, var, length):
     return result
 
 
-class Layer:
+class BaseLayer:
     def __init__(self,
                  input_shape=None,
                  initializer=kaiming_uniform,
@@ -101,7 +101,7 @@ class Param:
         self.grad = np.zeros_like(self.value)
 
 
-class Convolutional2D(Layer):
+class Convolutional2D(BaseLayer):
     def __init__(self, kernel_size, in_channels=None, out_channels=None,
                  padding=0, padding_value=0, stride=1,
                  w=None, bias=True, *args, **kwargs):
@@ -211,7 +211,7 @@ class Convolutional2D(Layer):
         return {'w': self.w}
 
 
-class Flatten(Layer):
+class Flatten(BaseLayer):
     def forward(self, X):
         self._mem = X.shape
         return np.reshape(X, self.get_output_shape(X.shape))
@@ -225,7 +225,7 @@ class Flatten(Layer):
         return input_shape[0], np.product(input_shape[1:])
 
 
-class FullyConnected(Layer):
+class FullyConnected(BaseLayer):
     def __init__(self, n_input=None, n_output=None, w=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if n_input is None:
@@ -264,7 +264,7 @@ class FullyConnected(Layer):
         return {'w': self.w}
 
 
-class Input(Layer):
+class Input(BaseLayer):
     def __init__(self, input_shape=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if isinstance(input_shape, int):
@@ -285,7 +285,7 @@ class Input(Layer):
         return input_shape
 
 
-class MaxPool2D(Layer):
+class MaxPool2D(BaseLayer):
     def __init__(self, kernel_size, padding=0, stride=None, ceil_mode=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -371,7 +371,7 @@ class MaxPool2D(Layer):
         return batch_size, out_height, out_width, channels
 
 
-class Relu(Layer):
+class Relu(BaseLayer):
     def forward(self, X):
         self._mem = X >= 0
         return X * self._mem
@@ -383,3 +383,28 @@ class Relu(Layer):
 
     def get_output_shape(self, input_shape):
         return input_shape
+
+
+class Upsample2D(BaseLayer):
+    def __init__(self, scale_factor):
+        self.scale_factor = tuplize('scale_factor', scale_factor, 2)
+
+    def forward(self, X):
+        self._mem = X.shape
+        return X.repeat(self.scale_factor[0], axis=1).repeat(self.scale_factor[1], axis=2)
+
+    def backward(self, grad):
+        batch_size, height, width, channels = grad.shape
+        sf_y, sf_x = self.scale_factor
+
+        result = np.zeros(self._mem)
+        for y, gy in enumerate(range(0, height, sf_y)):
+            for x, gx in enumerate(range(0, width, sf_x)):
+                region = grad[:, gy:gy + sf_y, gx:gx + sf_x, :]
+                result[:, y, x, :] += np.sum(region)
+
+        self.clear_memory()
+        return result
+
+    def get_output_shape(self, input_shape):
+        return tuple(np.array(input_shape) * (1, *self.scale_factor, 1))

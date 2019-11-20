@@ -3,7 +3,7 @@ from collections import namedtuple
 import numpy as np
 
 
-class Optimizer:
+class BaseOptimizer:
     def __init__(self):
         self.groups = {}
 
@@ -20,7 +20,7 @@ class Optimizer:
         raise NotImplementedError()
 
 
-class Adagrad(Optimizer):
+class Adagrad(BaseOptimizer):
     def __init__(self, lr=0.01, initial_accumulated=0):
         super().__init__()
         self.lr = lr
@@ -36,7 +36,7 @@ class Adagrad(Optimizer):
         return namedtuple('State', 'accumulated', defaults=self.initials)()
 
 
-class Adam(Optimizer):
+class Adam(BaseOptimizer):
     def __init__(self, lr=0.001, beta1=0.9, beta2=0.999,
                  initial_velocity=0, initial_accumulated=0):
         super().__init__()
@@ -56,7 +56,7 @@ class Adam(Optimizer):
         return namedtuple('State', 'velocity accumulated', defaults=self.initials)()
 
 
-class Momentum(Optimizer):
+class Momentum(BaseOptimizer):
     def __init__(self, lr, momentum=0, initial_velocity=0):
         super().__init__()
         self.lr = lr
@@ -73,7 +73,7 @@ class Momentum(Optimizer):
         return namedtuple('State', 'velocity', defaults=self.initials)()
 
 
-class RMSProp(Optimizer):
+class RMSProp(BaseOptimizer):
     def __init__(self, lr=0.01, rho=0.99, initial_accumulated=0):
         super().__init__()
         self.lr = lr

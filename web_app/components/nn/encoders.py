@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class Encoder:
+class BaseEncoder:
     def encode(self, data):
         raise NotImplementedError()
 
@@ -9,7 +9,7 @@ class Encoder:
         raise NotImplementedError()
 
 
-class OneHot(Encoder):
+class OneHot(BaseEncoder):
     """Only for single-label classification"""
 
     def __init__(self, labels_count):

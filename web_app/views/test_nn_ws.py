@@ -6,7 +6,10 @@ from flask_socketio import emit
 from .. import socketio
 
 python_executable = Path('.venv', 'Scripts', 'python.exe')
-test_script = Path('test_nn.py')
+tester_filepath = Path('test_nn.py')
+test_scripts = {
+    'test_gradients': 'Test gradients',
+}
 tester = None
 
 
@@ -16,17 +19,30 @@ def test_connect():
 
 
 @socketio.on('start', namespace='/test-nn-ws')
-def start():
+def start(message):
     global tester
     if tester is not None:
         emit('message', 'Already started, wait for a result\n\n')
         return
     try:
-        tester = Popen([python_executable, '-u', test_script], stdout=PIPE, stderr=PIPE)
+        tester = Popen([python_executable, '-u', tester_filepath, message['test_name']],
+                       stdout=PIPE, stderr=PIPE)
         for output in tester.stdout:
             emit('message', output.decode('utf-8'))
         for output in tester.stderr:
             emit('message', output.decode('utf-8'))
         emit('message', '\n')
+    finally:
+        tester = None
+
+
+@socketio.on('stop', namespace='/test-nn-ws')
+def stop():
+    global tester
+    if tester is None:
+        return
+    try:
+        tester.terminate()
+        emit('message', 'Stopped the process\n')
     finally:
         tester = None

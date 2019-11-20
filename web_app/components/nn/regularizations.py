@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class Regularizer:
+class BaseRegularizer:
     def __init__(self, reg_strength):
         self.reg_strength = float(reg_strength)
 
@@ -12,14 +12,14 @@ class Regularizer:
         return f'{type(self).__name__}({self.reg_strength})'
 
 
-class L1(Regularizer):
+class L1(BaseRegularizer):
     def __call__(self, weights):
         loss = self.reg_strength * np.sum(np.abs(weights))
         grad = self.reg_strength * np.sign(weights)
         return loss, grad
 
 
-class L2(Regularizer):
+class L2(BaseRegularizer):
     def __call__(self, weights):
         loss = self.reg_strength * np.sum(weights ** 2)
         grad = self.reg_strength * 2 * weights

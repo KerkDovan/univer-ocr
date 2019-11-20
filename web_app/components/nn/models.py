@@ -1,4 +1,4 @@
-from .layers import Input, Layer
+from .layers import Input, BaseLayer
 from .losses import SoftmaxCrossEntropy
 from .optimizers import Adam
 
@@ -70,7 +70,7 @@ class ModelConstructor:
 
     def add(self, layer_constructors):
         if ((isinstance(layer_constructors, LayerConstructor) or
-             isinstance(layer_constructors, Layer))):
+             isinstance(layer_constructors, BaseLayer))):
             self._add_one(layer_constructors)
             return
         for lc in layer_constructors:
@@ -101,7 +101,7 @@ class ModelConstructor:
         for lc in self.layer_constructors[start_from:]:
             if isinstance(lc, LayerConstructor):
                 layer = lc.construct(input_shape=input_shape)
-            elif isinstance(lc, Layer):
+            elif isinstance(lc, BaseLayer):
                 layer = lc
             elif isinstance(lc, type):
                 layer = lc(input_shape=input_shape)

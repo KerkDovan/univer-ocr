@@ -1,12 +1,12 @@
 import numpy as np
 
 
-class Loss:
+class BaseLoss:
     def __call__(self):
         raise NotImplementedError()
 
 
-class SigmoidCrossEntropy(Loss):
+class SigmoidCrossEntropy(BaseLoss):
     """https://gombru.github.io/2018/05/23/cross_entropy_loss/"""
 
     def __call__(self, X, ground_truth):
@@ -21,7 +21,7 @@ class SigmoidCrossEntropy(Loss):
         return loss, grad
 
 
-class SoftmaxCrossEntropy(Loss):
+class SoftmaxCrossEntropy(BaseLoss):
     """https://deepnotes.io/softmax-crossentropy"""
 
     def __call__(self, X, ground_truth):

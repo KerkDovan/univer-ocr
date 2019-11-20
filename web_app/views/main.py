@@ -6,6 +6,7 @@ from ..components import image_generator as ig
 from ..components.interpreter import interpret
 from ..components.primitives import CHARS, FONTS_LIST, encode_char
 from . import main_bp
+from .test_nn_ws import test_scripts
 
 raw, demo = None, None
 
@@ -65,7 +66,10 @@ def fonts():
 
 @main_bp.route('/test-nn')
 def test_nn():
-    return render_template('test-nn.html')
+    context = {
+        'tests': test_scripts.items(),
+    }
+    return render_template('test-nn.html', **context)
 
 
 @main_bp.route('/interpret_data')
