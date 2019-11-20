@@ -21,7 +21,7 @@ class LayeredImage:
     ]
     colors = {
         'image': (0, 0, 0, 255),
-        **{layer: 255 for layer in layer_names},
+        **{layer: 255 for layer in layer_names[1:]},
     }
     colors_demo = {
         'image': (0, 0, 0, 255),
@@ -53,6 +53,7 @@ class LayeredImage:
         }
         self.demo = {
             'image': Image.new('RGBA', (self.width, self.height), self.bg_color),
+            'guidelines': Image.new('RGBA', (self.width, self.height)),
             **{
                 name: Image.new('RGBA', (self.width, self.height))
                 for name in self.layer_names[1:]
@@ -189,7 +190,7 @@ class LayeredImage:
 
         if self.use_demo:
             def hline(y, color):
-                self.draw_demo['image'].line((left, y, right, y), fill=color, width=1)
+                self.draw_demo['guidelines'].line((left, y, right, y), fill=color, width=1)
 
             hline(y_ascent, (200, 0, 200))
             hline(y_M, (0, 200, 0))
