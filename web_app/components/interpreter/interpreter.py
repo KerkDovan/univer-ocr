@@ -24,16 +24,29 @@ def rearrange_points(points_top, points_center, points_bottom):
     return new_top, points_center, new_bottom
 
 
-def sort_letters(cm_top, cm_bottom, letter_positions):
-    def angle(coords):
-        a = np.angle(coords[1] - coords[0] * 1j, True)
-        return a + 2 * np.angle(-1, True) if a < 0 else a
-    center_vec = (cm_top - cm_bottom) * 10
-    center = cm_top + center_vec
-    cv_angle = angle(center_vec)
-    angles = [(angle(pos - center), pos) for pos in letter_positions]
-    angles = [(a + cv_angle if a < cv_angle else a, p) for a, p in angles]
-    return [x[1] for x in sorted(angles)]
+def get_sort_ids(center, vector, array):
+    def pseudoscalar_prod(a, b):
+        return a[1] * b[0] - b[1] * a[0]
+    left = [(i, el) for i, el in enumerate(array) if pseudoscalar_prod(vector, el - center) <= 0]
+    right = [(i, el) for i, el in enumerate(array) if pseudoscalar_prod(vector, el - center) > 0]
+    left = sorted(left, key=lambda x: np.linalg.norm(x[1] - center), reverse=True)
+    right = sorted(right, key=lambda x: np.linalg.norm(x[1] - center))
+    return [i for i, _ in left + right]
+
+
+def get_letter_sort_ids(cm_top, cm_bottom, letter_positions):
+    return get_sort_ids(cm_bottom, cm_top - cm_bottom, letter_positions)
+
+
+def get_line_sort_ids(cm_tops, cm_bottoms, cm_centers):
+    def rotate90(vector):
+        return np.array((vector[1], -vector[0]))
+    return get_sort_ids(cm_bottoms[0], rotate90(cm_tops[0] - cm_bottoms[0]), cm_centers)
+
+
+def iter_by_indices(iterable, indices):
+    for index in indices:
+        yield iterable[index]
 
 
 def interpret(layers):
@@ -71,8 +84,9 @@ def interpret(layers):
             [np.array(ndimage.center_of_mass(x)) for x in masked_line_top],
             [np.array(ndimage.center_of_mass(x)) for x in masked_line_center],
             [np.array(ndimage.center_of_mass(x)) for x in masked_line_bottom])
+        line_sort_ids = get_line_sort_ids(cm_top, cm_bottom, cm_center)
 
-        for l_id, line in enumerate(masked_line_center):
+        for l_id, line in enumerate(iter_by_indices(masked_line_center, line_sort_ids)):
             s_y, s_x = ndimage.find_objects(line)[0]
             points = np.argwhere(
                 line[s_y, s_x] * char_box_points[
@@ -82,9 +96,10 @@ def interpret(layers):
                 np.array((y + start[0] + s_y.start, x + start[1] + s_x.start))
                 for y, x in points
             ]
-            positions = sort_letters(start + cm_top[l_id], start + cm_bottom[l_id], positions)
+            letter_sort_ids = get_letter_sort_ids(
+                start + cm_top[l_id], start + cm_bottom[l_id], positions)
             res = ''
-            for y, x in positions:
+            for y, x in iter_by_indices(positions, letter_sort_ids):
                 possible_char_ids = np.argwhere(char_box_layers[:, y, x] & pole)
                 if possible_char_ids.shape[0] == 0:
                     print(f'Cannot recognize a char at position [{x};{y}]')
