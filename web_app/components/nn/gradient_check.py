@@ -34,9 +34,10 @@ def check_gradient(f, x, delta=1e-5, tol=1e-4):
         numeric_grad_at_ix = (a - b) / (2 * delta)
 
         if not np.isclose(numeric_grad_at_ix, analytic_grad_at_ix, tol).all():
-            print(f"Gradients are different at {ix}. "
-                  f"Analytic: {analytic_grad_at_ix}, "
-                  f"Numeric: {numeric_grad_at_ix}")
+            print(f"Gradients are different at {ix}.\n"
+                  f"  Analytic: {analytic_grad_at_ix},\n"
+                  f"  Numeric: {numeric_grad_at_ix},\n"
+                  f"  Analytic/Numeric: {analytic_grad_at_ix / numeric_grad_at_ix}")
             return False
 
         it.iternext()

@@ -401,7 +401,7 @@ class Upsample2D(BaseLayer):
         for y, gy in enumerate(range(0, height, sf_y)):
             for x, gx in enumerate(range(0, width, sf_x)):
                 region = grad[:, gy:gy + sf_y, gx:gx + sf_x, :]
-                result[:, y, x, :] += np.sum(region)
+                result[:, y, x, :] += np.sum(region, axis=(1, 2))
 
         self.clear_memory()
         return result

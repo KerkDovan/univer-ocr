@@ -143,11 +143,13 @@ def main():
 
     print('Upsamping 2D Layer')
     X_upsample2d = np.reshape(np.array([
-        [1, 2],
-        [3, 4],
-    ], dtype=np.float), (1, 2, 2, 1))
-    print(X_upsample2d[0, :, :, 0])
-    print(Upsample2D((2, 3)).forward(X_upsample2d)[0, :, :, 0])
+        [0.1, 0.2],
+        [0.3, 0.4],
+    ], dtype=np.float), (1, 2, 2, 1)).repeat(4, axis=0).repeat(3, axis=-1)
+    upsample2d = Upsample2D((2, 3))
+    result = upsample2d.forward(X_upsample2d)
+    grad = upsample2d.backward(result)
+    print(X_upsample2d[0, :, :, 0], result[0, :, :, 0], grad[0, :, :, 0], sep='\n')
     check_layer(Upsample2D(5), X_upsample2d)
 
     X_conv2d = np.random.randn(batch_size, 7, 7, 3)
