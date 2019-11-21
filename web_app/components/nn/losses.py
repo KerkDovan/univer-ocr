@@ -6,6 +6,40 @@ class BaseLoss:
         raise NotImplementedError()
 
 
+class SegmentationDice2D(BaseLoss):
+    """https://www.jeremyjordan.me/semantic-segmentation/#loss"""
+
+    def __call__(self, prediction, ground_truth):
+        batch_size, _, _, channels = prediction.shape
+        new_shape = (batch_size, 1, 1, channels)
+
+        def sum_reshape(array):
+            return np.sum(array, axis=(1, 2)).reshape(new_shape)
+
+        numerator = sum_reshape(prediction * ground_truth)
+        denominator = sum_reshape(prediction) + sum_reshape(ground_truth)
+
+        loss = np.sum(1 - 2 * numerator / denominator)
+        grad = -2 * (ground_truth * denominator - numerator) / denominator ** 2
+        return loss, grad
+
+
+class SegmentationJaccard2D(BaseLoss):
+    def __call__(self, prediction, ground_truth):
+        batch_size, _, _, channels = prediction.shape
+        new_shape = (batch_size, 1, 1, channels)
+
+        def sum_reshape(array):
+            return np.sum(array, axis=(1, 2)).reshape(new_shape)
+
+        numerator = sum_reshape(prediction * ground_truth)
+        denominator = sum_reshape(prediction) + sum_reshape(ground_truth) - numerator
+
+        loss = np.sum(1 - numerator / denominator)
+        grad = -(ground_truth * denominator - numerator * (1 - ground_truth)) / denominator ** 2
+        return loss, grad
+
+
 class SigmoidCrossEntropy(BaseLoss):
     """https://gombru.github.io/2018/05/23/cross_entropy_loss/"""
 

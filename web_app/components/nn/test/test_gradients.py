@@ -6,7 +6,8 @@ import numpy as np
 
 from .. import gradient_check as grad_check
 from ..layers import Convolutional2D, Flatten, FullyConnected, Input, MaxPool2D, Relu, Upsample2D
-from ..losses import SigmoidCrossEntropy, SoftmaxCrossEntropy
+from ..losses import (
+    SegmentationDice2D, SegmentationJaccard2D, SigmoidCrossEntropy, SoftmaxCrossEntropy)
 from ..models import LayerConstructor, ModelConstructor, Sequential
 from ..regularizations import L1, L2
 
@@ -174,6 +175,28 @@ def main():
     print(f'Sequential model with Convolutional 2D Layers from Constructors: '
           f'{model.count_parameters()} parameters')
     check_model(model, X_conv2d, y_conv2d)
+
+    X_dice = np.random.randn(4, 4, 8, 3)
+    X_dice -= np.min(X_dice) - np.random.uniform(low=0.0001, high=0.001)
+    X_dice /= np.max(X_dice) + np.random.uniform(low=0.0001, high=0.001)
+    gt_dice = np.random.randint(0, 2, size=(X_dice.shape[0], 11, 16, 5))
+    layers = [
+        Input(X_dice.shape),
+        Convolutional2D((3, 3), X_dice.shape[-1], 2, padding=1),
+        Convolutional2D((3, 3), 2, 3, padding=1),
+        MaxPool2D(3),
+        Convolutional2D((2, 2), 3, 4, padding=1),
+        Upsample2D(5),
+        Convolutional2D((2, 2), 4, gt_dice.shape[-1], padding=1),
+    ]
+
+    print(f'Sequential FCN with Segmentation Dice 2D Loss')
+    model = Sequential(layers, loss=SegmentationDice2D())
+    check_model(model, X_dice, gt_dice)
+
+    print(f'Sequential FCN with Segmentation Jaccard 2D Loss')
+    model = Sequential(layers, loss=SegmentationJaccard2D())
+    check_model(model, X_dice, gt_dice)
 
     print(f'Correct: {correct_cnt}/{total_cnt}\nTotal time: {total_time}')
 
