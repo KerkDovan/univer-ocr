@@ -5,7 +5,8 @@ from itertools import cycle
 import numpy as np
 
 from .. import gradient_check as grad_check
-from ..layers import Convolutional2D, Flatten, FullyConnected, Input, MaxPool2D, Relu, Upsample2D
+from ..layers import (
+    Concat, Convolutional2D, Flatten, FullyConnected, Input, MaxPool2D, Relu, Upsample2D)
 from ..losses import (
     SegmentationDice2D, SegmentationJaccard2D, SigmoidCrossEntropy, SoftmaxCrossEntropy)
 from ..models import LayerConstructor, ModelConstructor, Sequential
@@ -197,6 +198,15 @@ def main():
     print(f'Sequential FCN with Segmentation Jaccard 2D Loss')
     model = Sequential(layers, loss=SegmentationJaccard2D())
     check_model(model, X_dice, gt_dice)
+
+    print(f'Concat Layer')
+    concat = Concat()
+    X_concat = [np.array([[[1, 2, 3]]], dtype=np.float),
+                np.array([[[4, 5, 6]]], dtype=np.float)]
+    result = concat.forward(X_concat)
+    grads = concat.backward(result)
+    print(X_concat, result, grads, sep='\n')
+    check_layer(concat, X_concat[0])
 
     print(f'Correct: {correct_cnt}/{total_cnt}\nTotal time: {total_time}')
 

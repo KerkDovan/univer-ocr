@@ -33,21 +33,48 @@ def tuplize(name, var, length):
 
 class BaseLayer:
     def __init__(self,
+                 name=None,
                  input_shape=None,
                  initializer=kaiming_uniform,
                  regularizer=None,
                  optimizer=Adam()):
+        self.name = name
         self.input_shape = input_shape
         self.initializer = initializer
         self.regularizer = regularizer
         self.optimizer = optimizer
 
-        self._mem = None
+        self._mem = {}
+        self.single_input = False
 
-    def forward(self, X):
+    def forward(self, inputs):
+        if not isinstance(inputs, list):
+            inputs = [inputs]
+            self.single_input = True
+        result = []
+        for mem_id, X in enumerate(inputs):
+            result.append(self._forward(X, mem_id))
+        if self.single_input:
+            return result[0]
+        return result
+
+    def backward(self, grads):
+        if not isinstance(grads, list):
+            grads = [grads]
+            self.single_input = True
+        result = []
+        for mem_id, grad in enumerate(grads):
+            result.append(self._backward(grad, mem_id))
+        self.clear_memory()
+        if self.single_input:
+            self.single_input = False
+            return result[0]
+        return result
+
+    def _forward(self, X, mem_id=0):
         raise NotImplementedError()
 
-    def backward(self, grad):
+    def _backward(self, grad, mem_id=0):
         raise NotImplementedError()
 
     def update_grads(self):
@@ -59,7 +86,7 @@ class BaseLayer:
             param.clear_grad()
 
     def clear_memory(self):
-        self._mem = None
+        self._mem = {}
 
     def get_output_shape(self, input_shape):
         raise NotImplementedError()
@@ -101,6 +128,36 @@ class Param:
         self.grad = np.zeros_like(self.value)
 
 
+class Concat(BaseLayer):
+    def __init__(self, axis=-1, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.axis = axis
+
+    def forward(self, inputs):
+        if not isinstance(inputs, list):
+            self.single_input = True
+            return inputs
+        self._mem = [X.shape for X in inputs]
+        result = [np.concatenate(inputs, axis=self.axis)]
+        return result
+
+    def backward(self, grads):
+        if self.single_input:
+            self.single_input = False
+            return grads
+        shapes = self._mem
+        axis = self.axis
+        result = []
+        prev = [x for x in shapes[0]]
+        prev[axis] = 0
+        for i, shape in enumerate(shapes):
+            slices = [slice(0, c) for c in shape]
+            slices[axis] = slice(prev[axis], prev[axis] + shape[axis])
+            result.append(grads[0][tuple(slices)])
+            prev[axis] += shape[axis]
+        return result
+
+
 class Convolutional2D(BaseLayer):
     def __init__(self, kernel_size, in_channels=None, out_channels=None,
                  padding=0, padding_value=0, stride=1,
@@ -127,7 +184,7 @@ class Convolutional2D(BaseLayer):
             self.w = w
         self._init_optimizer()
 
-    def forward(self, X):
+    def _forward(self, X, mem_id=0):
         batch_size, height, width, channels = X.shape
         assert channels == self.in_channels
 
@@ -144,7 +201,7 @@ class Convolutional2D(BaseLayer):
             padded[:, ph:nh - ph, pw:nw - pw, :] = X
             X = padded
 
-        self._mem = X
+        self._mem[mem_id] = X
 
         result = np.zeros(output_shape)
         bias_vec = self.bias * np.ones((batch_size, 1))
@@ -159,8 +216,8 @@ class Convolutional2D(BaseLayer):
 
         return result
 
-    def backward(self, grad):
-        X = self._mem
+    def _backward(self, grad, mem_id=0):
+        X = self._mem[mem_id]
         batch_size, height, width, in_channels = X.shape
         _, out_height, out_width, out_channels = grad.shape
 
@@ -192,7 +249,6 @@ class Convolutional2D(BaseLayer):
         if ph != 0 or pw != 0:
             dx_total = dx_total[:, ph:height - ph, pw:width - pw, :]
 
-        self.clear_memory()
         return dx_total
 
     def get_output_shape(self, input_shape):
@@ -212,13 +268,12 @@ class Convolutional2D(BaseLayer):
 
 
 class Flatten(BaseLayer):
-    def forward(self, X):
-        self._mem = X.shape
+    def _forward(self, X, mem_id=0):
+        self._mem[mem_id] = X.shape
         return np.reshape(X, self.get_output_shape(X.shape))
 
-    def backward(self, grad):
-        reshaped = np.reshape(grad, self._mem)
-        self.clear_memory()
+    def _backward(self, grad, mem_id=0):
+        reshaped = np.reshape(grad, self._mem[mem_id])
         return reshaped
 
     def get_output_shape(self, input_shape):
@@ -242,19 +297,18 @@ class FullyConnected(BaseLayer):
             self.w = Param(np.copy(w), optimizer=self.optimizer)
         self._init_optimizer()
 
-    def forward(self, X):
+    def _forward(self, X, mem_id=0):
         nx = np.concatenate((X, np.ones((X.shape[0], 1))), axis=1)
-        self._mem = nx
+        self._mem[mem_id] = nx
         y = np.dot(nx, self.w.value)
         return y
 
-    def backward(self, grad):
+    def _backward(self, grad, mem_id=0):
         wt = np.transpose(self.w.value[:-1, :])
-        xt = np.transpose(self._mem)
+        xt = np.transpose(self._mem[mem_id])
         dx = np.dot(grad, wt)
         dw = np.dot(xt, grad)
         self.w.grad += dw
-        self.clear_memory()
         return dx
 
     def get_output_shape(self, input_shape):
@@ -274,11 +328,11 @@ class Input(BaseLayer):
         else:
             raise TypeError('input_shape must be int or tuple')
 
-    def forward(self, X):
+    def _forward(self, X, mem_id=0):
         assert X.shape[1:] == self.input_shape[1:]
         return X
 
-    def backward(self, grad):
+    def _backward(self, grad, mem_id=0):
         return grad
 
     def get_output_shape(self, input_shape):
@@ -294,7 +348,7 @@ class MaxPool2D(BaseLayer):
         self.stride = self.kernel_size if stride is None else tuplize('stride', stride)
         self.ceil_mode = ceil_mode
 
-    def forward(self, X):
+    def _forward(self, X, mem_id=0):
         batch_size, height, width, channels = X.shape
 
         kh, kw = self.kernel_size
@@ -325,11 +379,11 @@ class MaxPool2D(BaseLayer):
                 mask[:, my:my + mh, mx:mx + mw, :] = submask
                 result[:, y, x, :] += np.reshape(max_el, (batch_size, channels))
 
-        self._mem = mask, X.shape
+        self._mem[mem_id] = mask, X.shape
         return result
 
-    def backward(self, grad):
-        mask, input_shape = self._mem
+    def _backward(self, grad, mem_id=0):
+        mask, input_shape = self._mem[mem_id]
         batch_size, height, width, channels = input_shape
         _, out_height, out_width, _ = grad.shape
 
@@ -354,7 +408,6 @@ class MaxPool2D(BaseLayer):
         if ph != 0 or pw != 0:
             result = result[:, ph:height - ph, pw:width - pw, :]
 
-        self.clear_memory()
         return result
 
     def get_output_shape(self, input_shape):
@@ -372,13 +425,12 @@ class MaxPool2D(BaseLayer):
 
 
 class Relu(BaseLayer):
-    def forward(self, X):
-        self._mem = X >= 0
-        return X * self._mem
+    def _forward(self, X, mem_id=0):
+        self._mem[mem_id] = X >= 0
+        return X * self._mem[mem_id]
 
-    def backward(self, grad):
-        result = grad * self._mem
-        self.clear_memory()
+    def _backward(self, grad, mem_id=0):
+        result = grad * self._mem[mem_id]
         return result
 
     def get_output_shape(self, input_shape):
@@ -386,24 +438,24 @@ class Relu(BaseLayer):
 
 
 class Upsample2D(BaseLayer):
-    def __init__(self, scale_factor):
+    def __init__(self, scale_factor, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.scale_factor = tuplize('scale_factor', scale_factor, 2)
 
-    def forward(self, X):
-        self._mem = X.shape
+    def _forward(self, X, mem_id=0):
+        self._mem[mem_id] = X.shape
         return X.repeat(self.scale_factor[0], axis=1).repeat(self.scale_factor[1], axis=2)
 
-    def backward(self, grad):
+    def _backward(self, grad, mem_id=0):
         batch_size, height, width, channels = grad.shape
         sf_y, sf_x = self.scale_factor
 
-        result = np.zeros(self._mem)
+        result = np.zeros(self._mem[mem_id])
         for y, gy in enumerate(range(0, height, sf_y)):
             for x, gx in enumerate(range(0, width, sf_x)):
                 region = grad[:, gy:gy + sf_y, gx:gx + sf_x, :]
                 result[:, y, x, :] += np.sum(region, axis=(1, 2))
 
-        self.clear_memory()
         return result
 
     def get_output_shape(self, input_shape):

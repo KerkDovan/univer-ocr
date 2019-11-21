@@ -1,4 +1,4 @@
-from .layers import Input, BaseLayer
+from .layers import BaseLayer, Input
 from .losses import SoftmaxCrossEntropy
 from .optimizers import Adam
 
@@ -31,12 +31,18 @@ class Sequential(BaseModel):
         self.loss = loss
 
     def compute_loss_and_gradients(self, X, y):
+        if not isinstance(X, list):
+            X = [X]
+        if not isinstance(y, list):
+            y = [y]
+
         pred = X
         for layer in self.layers:
             layer.clear_grads()
             pred = layer.forward(pred)
 
-        loss, grad = self.loss(pred, y)
+        loss, grad = self.loss(pred[0], y[0])
+        grad = [grad]
 
         for layer in self.layers[::-1]:
             grad = layer.backward(grad)
