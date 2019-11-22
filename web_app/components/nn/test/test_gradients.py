@@ -6,10 +6,10 @@ import numpy as np
 
 from .. import gradient_check as grad_check
 from ..layers import (
-    Concat, Convolutional2D, Flatten, FullyConnected, Input, MaxPool2D, Relu, Upsample2D)
+    Concat, Convolutional2D, Flatten, FullyConnected, MaxPool2D, Noop, Relu, Upsample2D)
 from ..losses import (
     SegmentationDice2D, SegmentationJaccard2D, SigmoidCrossEntropy, SoftmaxCrossEntropy)
-from ..models import LayerConstructor, ModelConstructor, Sequential
+from ..models import Model, Sequential
 from ..regularizations import L1, L2
 
 correct_cnt = 0
@@ -60,12 +60,6 @@ def main():
 
     X_fc = np.random.randn(batch_size, n_input)
     X_fl = np.random.randn(batch_size, n_input, n_output)
-
-    print('Input Layer (N,)')
-    check_layer(Input((..., n_input)), X_fc)
-
-    print('Input Layer (N, M)')
-    check_layer(Input((..., n_input, n_output)), X_fl)
 
     layer = FullyConnected(n_input, n_output)
     print(f'Fully Connected Layer: {layer.count_parameters("w")} parameters')
@@ -154,40 +148,18 @@ def main():
     print(X_upsample2d[0, :, :, 0], result[0, :, :, 0], grad[0, :, :, 0], sep='\n')
     check_layer(Upsample2D(5), X_upsample2d)
 
-    X_conv2d = np.random.randn(batch_size, 7, 7, 3)
-    y_conv2d = np.array([np.roll([1] + [0] * 9, np.random.randint(10))
-                         for i in range(batch_size)])
-    constructor = ModelConstructor(Sequential, loss=SoftmaxCrossEntropy())
-    constructor.add([
-        LayerConstructor(Convolutional2D, (3, 3), out_channels=4, regularizer=L1(0.1)),
-        MaxPool2D(2),
-        LayerConstructor(Convolutional2D, (3, 3), out_channels=5, padding=1),
-        LayerConstructor(MaxPool2D, 2),
-        LayerConstructor(Convolutional2D, (3, 3), out_channels=6, padding=1, padding_value=0.5),
-        Relu,
-        LayerConstructor(Convolutional2D, (3, 3), out_channels=7, stride=2, regularizer=L2(0.1)),
-        Upsample2D(2),
-        Relu(),
-        LayerConstructor(Flatten),
-        LayerConstructor(FullyConnected, n_output=10)
-    ])
-    model = constructor.construct(input_shape=X_conv2d.shape)
-
-    print(f'Sequential model with Convolutional 2D Layers from Constructors: '
-          f'{model.count_parameters()} parameters')
-    check_model(model, X_conv2d, y_conv2d)
-
     X_dice = np.random.randn(4, 4, 8, 3)
     X_dice -= np.min(X_dice) - np.random.uniform(low=0.0001, high=0.001)
     X_dice /= np.max(X_dice) + np.random.uniform(low=0.0001, high=0.001)
     gt_dice = np.random.randint(0, 2, size=(X_dice.shape[0], 11, 16, 5))
     layers = [
-        Input(X_dice.shape),
         Convolutional2D((3, 3), X_dice.shape[-1], 2, padding=1),
         Convolutional2D((3, 3), 2, 3, padding=1),
         MaxPool2D(3),
         Convolutional2D((2, 2), 3, 4, padding=1),
         Upsample2D(5),
+        Noop(),
+        Relu(),
         Convolutional2D((2, 2), 4, gt_dice.shape[-1], padding=1),
     ]
 
@@ -207,6 +179,92 @@ def main():
     grads = concat.backward(result)
     print(X_concat, result, grads, sep='\n')
     check_layer(concat, X_concat[0])
+
+    batch_size = 5
+    in_size, out_size = 1, 3
+    in_cnt, out_cnt = 1, 2
+    in_shape = (batch_size, 5, 5, in_size)
+    out_shape = (batch_size, out_size)
+    X = [np.random.randn(*in_shape) for _ in range(in_cnt)]
+    y = [np.random.randint(2, size=out_shape) for _ in range(out_cnt)]
+    layers = {
+        'conv1': Convolutional2D((2, 2), out_channels=out_size),
+        'conv2': Convolutional2D((2, 2), out_channels=out_size),
+        'concat': Concat(),
+        'pool': MaxPool2D(2),
+        'flatten': Flatten(),
+        'dense1': FullyConnected(n_output=out_shape[1]),
+        'dense2': FullyConnected(n_output=out_shape[1]),
+    }
+    relations = {
+        'conv1': 0,
+        'conv2': 0,
+        'concat': ['conv1', 'conv2'],
+        'pool': 'concat',
+        'flatten': 'pool',
+        'dense1': 'flatten',
+        'dense2': 'dense1',
+        0: 'dense1',
+        1: 'dense2',
+    }
+    model = Model(layers, relations, loss=SigmoidCrossEntropy())
+    model.initialize_from_X(X)
+    print(f'Small non-sequential model: {model.count_parameters()} parameters')
+    check_model(model, X, y)
+
+    batch_size = 3
+    in_channels, out_channels = 3, 3
+    in_shape = (batch_size, 18, 18, in_channels)
+    out_shape = (batch_size, 1, 1, out_channels)
+    X = [np.random.randn(*in_shape), np.random.randn(*in_shape)]
+    y = np.random.randint(2, size=out_shape)
+    layers = {
+        'conv_1_1': Convolutional2D((2, 2), out_channels=2),
+        'conv_1_2': Convolutional2D((2, 2), out_channels=2),
+        'pool_1': MaxPool2D((2, 2)),
+
+        'conv_2_1': Convolutional2D((2, 2), out_channels=3),
+        'conv_2_2': Convolutional2D((2, 2), out_channels=3),
+        'pool_2': MaxPool2D((2, 2)),
+
+        'concat_1': Concat(),
+        'concat_2': Concat(),
+
+        'conv_3_1': Convolutional2D((2, 2), out_channels=2),
+        'conv_3_2': Convolutional2D((2, 2), out_channels=2),
+        'pool_3': MaxPool2D((2, 2)),
+
+        'concat_3': Concat(),
+        'pool_4': MaxPool2D((2, 2)),
+        'pool_5': MaxPool2D((2, 2)),
+        'conv_4': Convolutional2D((2, 2), out_channels=out_channels),
+    }
+    relations = {
+        'conv_1_1': 0,
+        'conv_1_2': 'conv_1_1',
+        'pool_1': 'conv_1_2',
+
+        'conv_2_1': 1,
+        'conv_2_2': 'conv_2_1',
+        'pool_2': 'conv_2_2',
+
+        'concat_1': ['pool_1', 'pool_2'],
+        'concat_2': [0, 1],
+
+        'conv_3_1': 'concat_2',
+        'conv_3_2': 'conv_3_1',
+        'pool_3': 'conv_3_2',
+
+        'concat_3': ['concat_1', 'pool_3'],
+        'pool_4': 'concat_3',
+        'pool_5': 'pool_4',
+        'conv_4': 'pool_5',
+        0: 'conv_4'
+    }
+    model = Model(layers, relations, loss=SegmentationDice2D())
+    model.initialize_from_X(X)
+    print(f'Big non-sequential model: {model.count_parameters()} parameters')
+    check_model(model, X, y)
 
     print(f'Correct: {correct_cnt}/{total_cnt}\nTotal time: {total_time}')
 

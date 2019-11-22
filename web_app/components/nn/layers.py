@@ -34,20 +34,27 @@ def tuplize(name, var, length):
 class BaseLayer:
     def __init__(self,
                  name=None,
-                 input_shape=None,
+                 input_shapes=None,
                  initializer=kaiming_uniform,
                  regularizer=None,
                  optimizer=Adam()):
         self.name = name
-        self.input_shape = input_shape
+        self.input_shapes = input_shapes
         self.initializer = initializer
         self.regularizer = regularizer
         self.optimizer = optimizer
 
+        self.is_initialized = True
+
         self._mem = {}
         self.single_input = False
 
+    def initialize(self, input_shapes):
+        self.input_shapes = input_shapes
+        self.is_initialized = True
+
     def forward(self, inputs):
+        assert self.is_initialized, 'You must initialize() layer before calling forward() method'
         if not isinstance(inputs, list):
             inputs = [inputs]
             self.single_input = True
@@ -88,7 +95,9 @@ class BaseLayer:
     def clear_memory(self):
         self._mem = {}
 
-    def get_output_shape(self, input_shape):
+    def get_output_shape(self, input_shapes):
+        if not isinstance(input_shapes, list):
+            input_shapes = [input_shapes]
         raise NotImplementedError()
 
     def params(self):
@@ -145,6 +154,8 @@ class Concat(BaseLayer):
         if self.single_input:
             self.single_input = False
             return grads
+        if not isinstance(grads, list):
+            grads = [grads]
         shapes = self._mem
         axis = self.axis
         result = []
@@ -157,6 +168,12 @@ class Concat(BaseLayer):
             prev[axis] += shape[axis]
         return result
 
+    def get_output_shape(self, input_shapes):
+        assert isinstance(input_shapes, list)
+        result = [x for x in input_shapes[0]]
+        result[self.axis] = np.sum(input_shapes, axis=0)[self.axis]
+        return tuple(result)
+
 
 class Convolutional2D(BaseLayer):
     def __init__(self, kernel_size, in_channels=None, out_channels=None,
@@ -165,24 +182,36 @@ class Convolutional2D(BaseLayer):
         super().__init__(*args, **kwargs)
 
         self.kernel_size = tuplize('kernel_size', kernel_size, 2)
-        if in_channels is None:
-            self.in_channels = self.input_shape[3]
-        else:
-            self.in_channels = in_channels
+        self.in_channels = in_channels
         self.out_channels = out_channels
         self.padding = tuplize('padding', padding, 2)
         self.padding_value = padding_value
         self.stride = tuplize('stride', stride, 2)
 
-        self.w_shape = (np.prod(self.kernel_size) * self.in_channels + 1, self.out_channels)
-
+        self.w_shape = None if w is None else w.shape
+        self.w = w
         self.bias = bias
-        if w is None:
+
+        if self.input_shapes is None and in_channels is not None:
+            self.input_shapes = [(None, None, None, self.in_channels)]
+        if self.input_shapes is not None:
+            self.initialize(self.input_shapes)
+        else:
+            self.is_initialized = False
+
+    def initialize(self, input_shapes):
+        self.input_shapes = input_shapes
+        self.in_channels = self.input_shapes[0][3]
+        if self.out_channels is None:
+            self.out_channels = self.in_channels
+        self.w_shape = (np.prod(self.kernel_size) * self.in_channels + 1, self.out_channels)
+        if self.w is None:
             self.w = Param(self.initializer(*self.w_shape), optimizer=self.optimizer)
         else:
-            assert w.shape == self.w_shape
-            self.w = w
+            assert self.w.shape == self.w_shape
+            self.w = Param(np.copy(self.w), optimizer=self.optimizer)
         self._init_optimizer()
+        self.is_initialized = True
 
     def _forward(self, X, mem_id=0):
         batch_size, height, width, channels = X.shape
@@ -251,8 +280,10 @@ class Convolutional2D(BaseLayer):
 
         return dx_total
 
-    def get_output_shape(self, input_shape):
-        batch_size, height, width, _ = input_shape
+    def get_output_shape(self, input_shapes):
+        if not isinstance(input_shapes, list):
+            input_shapes = [input_shapes]
+        batch_size, height, width, _ = input_shapes[0]
 
         kh, kw = self.kernel_size
         ph, pw = self.padding
@@ -276,26 +307,39 @@ class Flatten(BaseLayer):
         reshaped = np.reshape(grad, self._mem[mem_id])
         return reshaped
 
-    def get_output_shape(self, input_shape):
-        return input_shape[0], np.product(input_shape[1:])
+    def get_output_shape(self, input_shapes):
+        if not isinstance(input_shapes, list):
+            input_shapes = [input_shapes]
+        return input_shapes[0][0], np.product(input_shapes[0][1:])
 
 
 class FullyConnected(BaseLayer):
     def __init__(self, n_input=None, n_output=None, w=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if n_input is None:
-            self.n_input = self.input_shape[1]
-        else:
-            self.n_input = n_input
+        self.n_input = n_input
         self.n_output = n_output
-        if w is None:
+        self.w = w
+        if self.input_shapes is None and n_input is not None:
+            self.input_shapes = [(None, self.n_input)]
+        if self.input_shapes is not None:
+            self.initialize(self.input_shapes)
+        else:
+            self.is_initialized = False
+
+    def initialize(self, input_shapes):
+        self.input_shapes = input_shapes
+        self.n_input = self.input_shapes[0][1]
+        if self.n_output is None:
+            self.n_output = self.n_input
+        if self.w is None:
             self.w = Param(
                 self.initializer(self.n_input + 1, self.n_output),
                 optimizer=self.optimizer)
         else:
-            assert w.shape == (self.n_input + 1, self.n_output)
-            self.w = Param(np.copy(w), optimizer=self.optimizer)
+            assert self.w.shape == (self.n_input + 1, self.n_output)
+            self.w = Param(np.copy(self.w), optimizer=self.optimizer)
         self._init_optimizer()
+        self.is_initialized = True
 
     def _forward(self, X, mem_id=0):
         nx = np.concatenate((X, np.ones((X.shape[0], 1))), axis=1)
@@ -311,32 +355,13 @@ class FullyConnected(BaseLayer):
         self.w.grad += dw
         return dx
 
-    def get_output_shape(self, input_shape):
-        return input_shape[0], self.n_output
+    def get_output_shape(self, input_shapes):
+        if not isinstance(input_shapes, list):
+            input_shapes = [input_shapes]
+        return input_shapes[0][0], self.n_output
 
     def params(self):
         return {'w': self.w}
-
-
-class Input(BaseLayer):
-    def __init__(self, input_shape=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if isinstance(input_shape, int):
-            self.input_shape = (input_shape,)
-        elif isinstance(input_shape, tuple):
-            self.input_shape = input_shape
-        else:
-            raise TypeError('input_shape must be int or tuple')
-
-    def _forward(self, X, mem_id=0):
-        assert X.shape[1:] == self.input_shape[1:]
-        return X
-
-    def _backward(self, grad, mem_id=0):
-        return grad
-
-    def get_output_shape(self, input_shape):
-        return input_shape
 
 
 class MaxPool2D(BaseLayer):
@@ -410,8 +435,10 @@ class MaxPool2D(BaseLayer):
 
         return result
 
-    def get_output_shape(self, input_shape):
-        batch_size, height, width, channels = input_shape
+    def get_output_shape(self, input_shapes):
+        if not isinstance(input_shapes, list):
+            input_shapes = [input_shapes]
+        batch_size, height, width, channels = input_shapes[0]
 
         kh, kw = self.kernel_size
         ph, pw = self.padding
@@ -424,6 +451,19 @@ class MaxPool2D(BaseLayer):
         return batch_size, out_height, out_width, channels
 
 
+class Noop(BaseLayer):
+    def _forward(self, X, mem_id=0):
+        return X
+
+    def _backward(self, grad, mem_id=0):
+        return grad
+
+    def get_output_shape(self, input_shapes):
+        if not isinstance(input_shapes, list):
+            input_shapes = [input_shapes]
+        return input_shapes
+
+
 class Relu(BaseLayer):
     def _forward(self, X, mem_id=0):
         self._mem[mem_id] = X >= 0
@@ -433,8 +473,10 @@ class Relu(BaseLayer):
         result = grad * self._mem[mem_id]
         return result
 
-    def get_output_shape(self, input_shape):
-        return input_shape
+    def get_output_shape(self, input_shapes):
+        if not isinstance(input_shapes, list):
+            input_shapes = [input_shapes]
+        return input_shapes
 
 
 class Upsample2D(BaseLayer):
@@ -458,5 +500,7 @@ class Upsample2D(BaseLayer):
 
         return result
 
-    def get_output_shape(self, input_shape):
-        return tuple(np.array(input_shape) * (1, *self.scale_factor, 1))
+    def get_output_shape(self, input_shapes):
+        if not isinstance(input_shapes, list):
+            input_shapes = [input_shapes]
+        return tuple(np.array(input_shapes[0]) * (1, *self.scale_factor, 1))

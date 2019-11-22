@@ -6,12 +6,12 @@ def check_gradient(f, x, delta=1e-5, tol=1e-4):
     Checks the implementation of analytical gradient by comparing
     it to numerical gradient using two-point formula
     Arguments:
-      f: function that receives x and computes value and gradient
-      x: np array, initial point where gradient is checked
-      delta: step to compute numerical gradient
-      tol: tolerance for comparing numerical and analytical gradient
+        f: function that receives x and computes value and gradient
+        x: np array, initial point where gradient is checked
+        delta: step to compute numerical gradient
+        tol: tolerance for comparing numerical and analytical gradient
     Return:
-      bool indicating whether gradients match or not
+        bool indicating whether gradients match or not
     """
     assert isinstance(x, np.ndarray)
     assert x.dtype == np.float
@@ -32,17 +32,19 @@ def check_gradient(f, x, delta=1e-5, tol=1e-4):
         a = f(x + d)[0]
         b = f(x - d)[0]
         numeric_grad_at_ix = (a - b) / (2 * delta)
+        if isinstance(numeric_grad_at_ix, np.ndarray):
+            numeric_grad_at_ix = np.sum(numeric_grad_at_ix)
 
         if not np.isclose(numeric_grad_at_ix, analytic_grad_at_ix, tol).all():
             print(f"Gradients are different at {ix}.\n"
                   f"  Analytic: {analytic_grad_at_ix},\n"
                   f"  Numeric: {numeric_grad_at_ix},\n"
-                  f"  Analytic/Numeric: {analytic_grad_at_ix / numeric_grad_at_ix}")
+                  f"  diff: {abs(analytic_grad_at_ix - numeric_grad_at_ix)},\n"
+                  f"  ratio: {analytic_grad_at_ix / numeric_grad_at_ix}")
             return False
 
         it.iternext()
 
-    # print("Gradient check passed!")
     return True
 
 
@@ -50,12 +52,12 @@ def check_layer_gradient(layer, x, delta=1e-5, tol=1e-4):
     """
     Checks gradient correctness for the input and output of a layer
     Arguments:
-      layer: neural network layer, with forward and backward functions
-      x: starting point for layer input
-      delta: step to compute numerical gradient
-      tol: tolerance for comparing numerical and analytical gradient
+        layer: neural network layer, with forward and backward functions
+        x: starting point for layer input
+        delta: step to compute numerical gradient
+        tol: tolerance for comparing numerical and analytical gradient
     Returns:
-      bool indicating whether gradients match or not
+        bool indicating whether gradients match or not
     """
     output = layer.forward(x)
     output_weight = np.random.randn(*output.shape)
@@ -76,13 +78,13 @@ def check_layer_param_gradient(layer, x,
     """
     Checks gradient correctness for the parameter of the layer
     Arguments:
-      layer: neural network layer, with forward and backward functions
-      x: starting point for layer input
-      param_name: name of the parameter
-      delta: step to compute numerical gradient
-      tol: tolerance for comparing numerical and analytical gradient
+        layer: neural network layer, with forward and backward functions
+        x: starting point for layer input
+        param_name: name of the parameter
+        delta: step to compute numerical gradient
+        tol: tolerance for comparing numerical and analytical gradient
     Returns:
-      bool indicating whether gradients match or not
+        bool indicating whether gradients match or not
     """
     param = layer.params()[param_name]
     initial_w = param.value
@@ -107,13 +109,13 @@ def check_model_gradient(model, X, y,
     """
     Checks gradient correctness for all model parameters
     Arguments:
-      model: neural network model with compute_loss_and_gradients
-      X: batch of input data
-      y: batch of labels
-      delta: step to compute numerical gradient
-      tol: tolerance for comparing numerical and analytical gradient
+        model: neural network model with compute_loss_and_gradients
+        X: batch of input data
+        y: batch of labels
+        delta: step to compute numerical gradient
+        tol: tolerance for comparing numerical and analytical gradient
     Returns:
-      bool indicating whether gradients match or not
+        bool indicating whether gradients match or not
     """
     params = model.params()
 
@@ -125,6 +127,8 @@ def check_model_gradient(model, X, y,
         def helper_func(w):
             param.value = w
             loss = model.compute_loss_and_gradients(X, y)
+            if isinstance(loss, list):
+                loss = np.array(loss)
             grad = param.grad
             return loss, grad
 
