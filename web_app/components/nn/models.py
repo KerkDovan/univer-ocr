@@ -193,44 +193,19 @@ class Model(BaseModel):
         return sum([layer.count_parameters() for layer in self.layers.values()])
 
 
-class Sequential(BaseModel):
-    def __init__(self, layers, optimizer=Adam(), loss=SoftmaxCrossEntropy()):
-        self.layers = layers
-        self.optimizer = optimizer
-        self.loss = loss
+class Sequential(Model):
+    def __init__(self, layers, *args, **kwargs):
+        if not isinstance(layers, list):
+            raise TypeError(f'layers argument must be list, found: {type(layers)}')
 
-    def compute_loss_and_gradients(self, X, y):
-        if not isinstance(X, list):
-            X = [X]
-        if not isinstance(y, list):
-            y = [y]
+        layers_dict = {}
+        relations = {}
+        prev_name = 0
+        for i, layer in enumerate(layers):
+            name = f'{i}_{type(layer).__name__}'
+            layers_dict[name] = layer
+            relations[name] = prev_name
+            prev_name = name
+        relations[0] = prev_name
 
-        pred = X
-        for layer in self.layers:
-            layer.clear_grads()
-            pred = layer.forward(pred)
-
-        loss, grad = self.loss(pred[0], y[0])
-        grad = [grad]
-
-        for layer in self.layers[::-1]:
-            grad = layer.backward(grad)
-
-        return loss
-
-    def predict(self, X):
-        pred = X
-        for layer in self.layers:
-            pred = layer.forward(pred)
-        return pred
-
-    def params(self):
-        result = {
-            f'layer_{i}_{name}': param
-            for i, layer in enumerate(self.layers)
-            for name, param in layer.params().items()
-        }
-        return result
-
-    def count_parameters(self):
-        return sum([layer.count_parameters() for layer in self.layers])
+        super().__init__(layers=layers_dict, relations=relations, *args, **kwargs)

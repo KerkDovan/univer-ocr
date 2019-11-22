@@ -88,6 +88,7 @@ def main():
                   for i in range(len(n_sizes) - 1)]
 
     model = Sequential(layers, loss=SoftmaxCrossEntropy())
+    model.initialize_from_X(X)
     print(f'Sequential model with Softmax CE Loss: {model.count_parameters()} parameters')
     y = np.array([np.roll([1] + [0] * (n_sizes[-1] - 1), np.random.randint(n_sizes[-1]))
                   for i in range(batch_size)])
@@ -165,6 +166,7 @@ def main():
 
     print(f'Sequential FCN with Segmentation Dice 2D Loss')
     model = Sequential(layers, loss=SegmentationDice2D())
+    model.initialize_from_X(X_dice)
     check_model(model, X_dice, gt_dice)
 
     print(f'Sequential FCN with Segmentation Jaccard 2D Loss')
