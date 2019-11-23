@@ -242,3 +242,12 @@ def generate_demo(width, height):
     for _ in range(30):
         layers.add_paragraph(random_text(), random_font())
     return layers.get_raw(), layers.get_demo()
+
+
+def generate_train_data(width, height):
+    bg_color = (*np.random.randint(256, size=(3,)), 255)
+    layers = LayeredImage(width, height, bg_color)
+    for i in range(30):
+        print(i, end=' ')
+        layers.add_paragraph(random_text(), random_font())
+    return layers.get_raw()

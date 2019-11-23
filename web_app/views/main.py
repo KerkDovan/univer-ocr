@@ -72,6 +72,11 @@ def test_nn():
     return render_template('test-nn.html', **context)
 
 
+@main_bp.route('/train')
+def train():
+    return render_template('train.html')
+
+
 @main_bp.route('/interpret_data')
 def interpret_data():
     global raw, demo

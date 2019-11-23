@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+
+{% block styles %}
+
+<style type="text/css">
+  #messages {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 14px;
+    background-color: white !important;
+  }
+</style>
+
+{% endblock %}
+
+
+{% block content %}
+
+<div class="d-flex justify-content-between">
+  <div>
+    <button class="mb-3 btn btn-sm btn-primary" id="start-btn">Start</button>
+  </div>
+  <div>
+    <button class="mb-3 btn btn-sm btn-outline-warning" id="clear-btn">Clear</button>
+    <button class="mb-3 btn btn-sm btn-outline-danger" id="stop-btn">Stop</button>
+  </div>
+</div>
+
+<div>
+  <textarea class="form-control" id="messages" rows="30" readonly></textarea>
+</div>
+
+{% endblock content %}
+
+
+{% block scripts %}
+
+<script type="text/javascript">
+
+"use strict";
+
+window.onload = function() {
+  function append(message) {
+    $("#messages").append(message);
+    document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
+  }
+
+  let socket = io.connect("ws://127.0.0.1/train-ws");
+  socket.on('message', function(message) {
+    append(message);
+  });
+
+  $("#start-btn").click(function () {
+    append("=".repeat(80) + "\n\n");
+    socket.emit("start");
+  });
+  $("#clear-btn").click(function () {
+    $("#messages").html("");
+  });
+  $("#stop-btn").click(function () {
+    socket.emit("stop");
+  });
+}
+
+</script>
+
+{% endblock %}

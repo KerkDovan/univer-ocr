@@ -18,6 +18,13 @@
             "program": "D:\\MyData\\Coding\\Python\\univer-ocr\\test_nn.py",
             "args": ["test_gradients"],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Train Neural Network",
+            "type": "python",
+            "request": "launch",
+            "program": "D:\\MyData\\Coding\\Python\\univer-ocr\\train.py",
+            "console": "integratedTerminal"
         }
     ]
 }
