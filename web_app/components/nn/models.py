@@ -1,6 +1,7 @@
 from .help_func import make_list_if_not
 from .layers import BaseLayer
 from .losses import SoftmaxCrossEntropy
+from .progress_tracker import track_this
 
 
 class BaseModel(BaseLayer):
@@ -41,10 +42,6 @@ class Model(BaseModel):
         self.loss = loss
         self.input_grads = {}
         self.is_initialized = False
-
-    def initialize_from_X(self, X):
-        X = make_list_if_not(X)
-        self.initialize([x.shape for x in X])
 
     def initialize(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
@@ -103,6 +100,7 @@ class Model(BaseModel):
 
         self.is_initialized = True
 
+    @track_this('forward')
     def forward(self, inputs):
         inputs = make_list_if_not(inputs)
         if not self.is_initialized:
@@ -138,6 +136,7 @@ class Model(BaseModel):
 
         return [outputs[k] for k in range(self.outputs_count)]
 
+    @track_this('backward')
     def backward(self, grads):
         grads = make_list_if_not(grads)
         keys_backward = list(self.relations_backward.keys())
@@ -253,6 +252,21 @@ class Model(BaseModel):
         for layer in self.layers.values():
             total_loss += layer.regularize()
         return total_loss
+
+    def _set_name(self, name):
+        self.name = name
+        for layer_name, layer in self.layers.items():
+            layer._set_name(f'{self.name}/{layer_name}')
+
+    def init_progress_tracker(self, progress_tracker, set_names_recursively=True):
+        if set_names_recursively:
+            self._set_name(self.name or 'model')
+        else:
+            self.name = self.name or 'model'
+        self.progress_tracker = progress_tracker
+        self.progress_tracker.register_layer(self.name)
+        for layer in self.layers.values():
+            layer.init_progress_tracker(progress_tracker, set_names_recursively=False)
 
 
 class Sequential(Model):

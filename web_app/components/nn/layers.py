@@ -5,6 +5,7 @@ import numpy as np
 from .help_func import make_list_if_not, tuplize
 from .initializers import kaiming_uniform
 from .optimizers import Adam
+from .progress_tracker import BaseProgressTracker, track_this
 
 
 class BaseLayer:
@@ -27,10 +28,17 @@ class BaseLayer:
         self._mem = {}
         self.single_input = False
 
+        self.progress_tracker = BaseProgressTracker()
+
+    def initialize_from_X(self, X):
+        X = make_list_if_not(X)
+        self.initialize([x.shape for x in X])
+
     def initialize(self, input_shapes):
         self.input_shapes = input_shapes
         self.is_initialized = True
 
+    @track_this('forward')
     def forward(self, inputs):
         assert self.is_initialized, 'You must initialize() layer before calling forward() method'
         if not isinstance(inputs, list):
@@ -43,6 +51,7 @@ class BaseLayer:
             return result[0]
         return result
 
+    @track_this('backward')
     def backward(self, grads):
         if not isinstance(grads, list):
             grads = [grads]
@@ -98,9 +107,16 @@ class BaseLayer:
             total_loss += loss
         return total_loss
 
+    def _set_name(self, name):
+        self.name = name
+
     def _init_optimizer(self):
         for param in self.params():
             self.optimizer.add_param(param)
+
+    def init_progress_tracker(self, progress_tracker, set_names_recursively=False):
+        self.progress_tracker = progress_tracker
+        self.progress_tracker.register_layer(self.name)
 
 
 class Param:
@@ -122,6 +138,7 @@ class Concat(BaseLayer):
         super().__init__(*args, **kwargs)
         self.axis = axis
 
+    @track_this('forward')
     def forward(self, inputs):
         if not isinstance(inputs, list):
             self.single_input = True
@@ -130,6 +147,7 @@ class Concat(BaseLayer):
         result = [np.concatenate(inputs, axis=self.axis)]
         return result
 
+    @track_this('backward')
     def backward(self, grads):
         if self.single_input:
             self.single_input = False

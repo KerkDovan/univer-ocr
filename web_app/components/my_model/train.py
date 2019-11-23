@@ -4,6 +4,7 @@ from pprint import pformat
 import numpy as np
 
 from ..image_generator.generate import LayeredImage, generate_train_data
+from ..nn.progress_tracker import ProgressTracker
 from .model import make_unet
 
 emitter = None
@@ -27,8 +28,24 @@ def message(*message, sep=' ', end='\n'):
     emit('message', text)
 
 
+previous = None
+
+
+def print_diff(status):
+    global previous
+    if previous is None:
+        previous = status
+        return
+    changed = []
+    for name, event in status.items():
+        if previous[name] != event:
+            changed.append(f'{name}: {str(event)}')
+    message(changed)
+    previous = status
+
+
 def train_model():
-    picture = generate_train_data(480, 640)
+    picture = generate_train_data(640, 480)
     layer_names = LayeredImage.layer_names
     X = np.array(picture['image'])
     y = np.array([np.array(picture[name])
@@ -45,8 +62,11 @@ def train_model():
 
     message(f'Input shape: {input_shape}, output shape: {y.shape}')
 
+    tracker = ProgressTracker(print_diff)
+
     unet = make_unet(y.shape[3])
     unet.initialize(input_shape)
+    unet.init_progress_tracker(tracker)
 
     message(pformat(unet.get_all_output_shapes(input_shape)))
     message(f'Count of parameters: {unet.count_parameters()}')
