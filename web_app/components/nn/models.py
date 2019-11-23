@@ -1,8 +1,10 @@
+from .help_func import make_list_if_not
+from .layers import BaseLayer
 from .losses import SoftmaxCrossEntropy
 from .optimizers import Adam
 
 
-class BaseModel:
+class BaseModel(BaseLayer):
     def compute_loss_and_gradients(self, X, y):
         raise NotImplementedError()
 
@@ -26,25 +28,28 @@ class BaseModel:
 class Model(BaseModel):
     def __init__(self, layers, relations, optimizer=Adam(), loss=SoftmaxCrossEntropy()):
         if not isinstance(layers, dict):
-            raise TypeError(f'layers argument must be dict, found: {type(layers)}')
+            raise TypeError(f'layers argument must be dict, found: {type(layers).__name__}')
         if not isinstance(relations, dict):
-            raise TypeError(f'relations argument must be dict, found: {type(relations)}')
+            raise TypeError(f'relations argument must be dict, found: {type(relations).__name__}')
         self.layers = layers
         self.relations = relations
         self.relations_backward = {}
+        self.inputs_count = None
+        self.outputs_count = None
         self.optimizer = optimizer
         self.loss = loss
         self.input_grads = {}
         self.is_initialized = False
 
     def initialize_from_X(self, X):
-        if not isinstance(X, list):
-            X = [X]
+        X = make_list_if_not(X)
         self.initialize([x.shape for x in X])
 
     def initialize(self, input_shapes):
-        if not isinstance(input_shapes, list):
-            input_shapes = [input_shapes]
+        input_shapes = make_list_if_not(input_shapes)
+
+        self.inputs_count = max(v for k, v in self.relations.items() if isinstance(v, int)) + 1
+        self.outputs_count = max(k for k, v in self.relations.items() if isinstance(k, int)) + 1
 
         keys = list(set(self.layers.keys()) | set(self.relations.keys()))
         output_keys = [k for k in keys if isinstance(k, int)]
@@ -62,8 +67,7 @@ class Model(BaseModel):
             currently_being_visited[layer_name] = True
 
             layer_input_shapes = []
-            if not isinstance(self.relations[layer_name], list):
-                self.relations[layer_name] = [self.relations[layer_name]]
+            self.relations[layer_name] = make_list_if_not(self.relations[layer_name])
 
             for i, src in enumerate(self.relations[layer_name]):
                 if isinstance(src, int):
@@ -97,59 +101,10 @@ class Model(BaseModel):
 
         self.is_initialized = True
 
-    def compute_loss_and_gradients(self, X, y):
-        if not isinstance(X, list):
-            X = [X]
-        if not isinstance(y, list):
-            y = [y]
-
-        keys = list(set(self.layers.keys()) | set(self.relations.keys()))
-        output_keys = sorted([k for k in keys if isinstance(k, int)])
-        predicted = self.predict(X)
-
-        losses, gradients = [], []
-        for key in output_keys:
-            loss_func = self.loss[key] if isinstance(self.loss, list) else self.loss
-            loss, grad = loss_func(predicted[key], y[key])
-            losses.append(loss)
-            gradients.append([grad])
-
-        keys_backward = list(self.relations_backward.keys())
-        input_keys = sorted([k for k in keys_backward if isinstance(k, int)])
-
-        grads = {name: None for name in keys_backward}
-
-        def rec_backward(layer_name):
-            if grads[layer_name] is not None:
-                return grads[layer_name]
-
-            input_grads = []
-            for dst, i in self.relations_backward[layer_name].items():
-                if isinstance(dst, int):
-                    input_grads.append(gradients[dst][0])
-                else:
-                    input_grads.append(rec_backward(dst)[i])
-
-            input_grads = sum(input_grads)
-            if isinstance(layer_name, int):
-                grads[layer_name] = input_grads
-                return input_grads
-
-            grads[layer_name] = self.layers[layer_name].backward(input_grads)
-            if not isinstance(grads[layer_name], list):
-                grads[layer_name] = [grads[layer_name]]
-            return grads[layer_name]
-
-        for key in input_keys:
-            self.input_grads[key] = rec_backward(key)
-
-        return losses
-
-    def predict(self, X):
-        if not isinstance(X, list):
-            X = [X]
+    def forward(self, inputs):
+        inputs = make_list_if_not(inputs)
         if not self.is_initialized:
-            self.initialize_from_X(X)
+            self.initialize_from_X(inputs)
 
         keys = list(set(self.layers.keys()) | set(self.relations.keys()))
         output_keys = [k for k in keys if isinstance(k, int)]
@@ -159,19 +114,19 @@ class Model(BaseModel):
             if outputs[layer_name] is not None:
                 return outputs[layer_name]
 
-            inputs = []
+            next_inputs = []
             for src in self.relations[layer_name]:
                 if isinstance(src, int):
-                    inputs.append(X[src])
+                    next_inputs.append(inputs[src])
                 else:
-                    inputs.append(rec_forward(src))
+                    next_inputs.append(rec_forward(src))
 
             if isinstance(layer_name, int):
-                outputs[layer_name] = inputs[0]
+                outputs[layer_name] = next_inputs[0]
                 return
 
             self.layers[layer_name].clear_grads()
-            outputs[layer_name] = self.layers[layer_name].forward(inputs)
+            outputs[layer_name] = self.layers[layer_name].forward(next_inputs)
             if isinstance(outputs[layer_name], list):
                 outputs[layer_name] = outputs[layer_name][0]
             return outputs[layer_name]
@@ -179,11 +134,90 @@ class Model(BaseModel):
         for key in output_keys:
             rec_forward(key)
 
-        return outputs
+        return [outputs[k] for k in range(self.outputs_count)]
+
+    def backward(self, grads):
+        grads = make_list_if_not(grads)
+        keys_backward = list(self.relations_backward.keys())
+        grads_mem = {name: None for name in keys_backward}
+
+        def rec_backward(layer_name):
+            if grads_mem[layer_name] is not None:
+                return grads_mem[layer_name]
+
+            input_grads = []
+            for dst, i in self.relations_backward[layer_name].items():
+                if isinstance(dst, int):
+                    input_grads.append(grads[dst])
+                else:
+                    input_grads.append(rec_backward(dst)[i])
+
+            input_grads = sum(input_grads)
+            if isinstance(layer_name, int):
+                grads_mem[layer_name] = input_grads
+                return input_grads
+
+            grads_mem[layer_name] = self.layers[layer_name].backward(input_grads)
+            grads_mem[layer_name] = make_list_if_not(grads_mem[layer_name])
+            return grads_mem[layer_name]
+
+        for key in range(self.inputs_count):
+            self.input_grads[key] = rec_backward(key)
+
+        return [self.input_grads[k] for k in range(self.inputs_count)]
+
+    def compute_loss_and_gradients(self, X, y):
+        X = make_list_if_not(X)
+        y = make_list_if_not(y)
+
+        predicted = self.forward(X)
+
+        losses, gradients = [], []
+        for key in range(self.outputs_count):
+            loss_func = self.loss[key] if isinstance(self.loss, list) else self.loss
+            loss, grad = loss_func(predicted[key], y[key])
+            losses.append(loss)
+            gradients.append(grad)
+
+        self.backward(gradients)
+        return losses
+
+    def predict(self, X):
+        return self.forward(X)
+
+    def get_output_shape(self, input_shapes):
+        output_shapes = {}
+
+        def rec_get_output_shapes(layer_name):
+            if layer_name in output_shapes.keys():
+                return output_shapes[layer_name]
+
+            layer_input_shapes = []
+
+            for i, src in enumerate(self.relations[layer_name]):
+                if isinstance(src, int):
+                    layer_input_shapes.append(input_shapes[src])
+                else:
+                    tmp = rec_get_output_shapes(src)
+                    if isinstance(tmp, list):
+                        tmp = tmp[0]
+                    layer_input_shapes.append(tmp)
+
+            if isinstance(layer_name, int):
+                return layer_input_shapes[0]
+
+            output_shapes[layer_name] = self.layers[layer_name].get_output_shape(
+                layer_input_shapes)
+            return output_shapes[layer_name]
+
+        result = []
+        for output in range(self.outputs_count):
+            result.append(rec_get_output_shapes(output))
+        return result
 
     def params(self):
         result = {
-            f'{layer_name}_{name}': param
+            f'{layer_name}/{name}': param
             for layer_name, layer in self.layers.items()
             for name, param in layer.params().items()
         }
@@ -196,7 +230,7 @@ class Model(BaseModel):
 class Sequential(Model):
     def __init__(self, layers, *args, **kwargs):
         if not isinstance(layers, list):
-            raise TypeError(f'layers argument must be list, found: {type(layers)}')
+            raise TypeError(f'layers argument must be list, found: {type(layers).__name__}')
 
         layers_dict = {}
         relations = {}

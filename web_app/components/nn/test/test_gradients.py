@@ -220,48 +220,41 @@ def main():
     out_shape = (batch_size, 1, 1, out_channels)
     X = [np.random.randn(*in_shape), np.random.randn(*in_shape)]
     y = np.random.randint(2, size=out_shape)
+
+    def make_conv_submodel(out_ch):
+        return Sequential([
+            Convolutional2D((2, 2), out_channels=out_ch),
+            Convolutional2D((2, 2), out_channels=out_ch),
+            MaxPool2D((2, 2)),
+        ])
+
     layers = {
-        'conv_1_1': Convolutional2D((2, 2), out_channels=2),
-        'conv_1_2': Convolutional2D((2, 2), out_channels=2),
+        'row_1': make_conv_submodel(2),
+        'row_2': make_conv_submodel(3),
+        'concat_rows': Concat(),
+
+        'concat_inputs': Concat(),
+        'row_inputs': make_conv_submodel(2),
+
+        'concat_all': Concat(),
+
         'pool_1': MaxPool2D((2, 2)),
-
-        'conv_2_1': Convolutional2D((2, 2), out_channels=3),
-        'conv_2_2': Convolutional2D((2, 2), out_channels=3),
         'pool_2': MaxPool2D((2, 2)),
-
-        'concat_1': Concat(),
-        'concat_2': Concat(),
-
-        'conv_3_1': Convolutional2D((2, 2), out_channels=2),
-        'conv_3_2': Convolutional2D((2, 2), out_channels=2),
-        'pool_3': MaxPool2D((2, 2)),
-
-        'concat_3': Concat(),
-        'pool_4': MaxPool2D((2, 2)),
-        'pool_5': MaxPool2D((2, 2)),
-        'conv_4': Convolutional2D((2, 2), out_channels=out_channels),
+        'conv_end': Convolutional2D((2, 2), out_channels=out_channels),
     }
     relations = {
-        'conv_1_1': 0,
-        'conv_1_2': 'conv_1_1',
-        'pool_1': 'conv_1_2',
+        'row_1': 0,
+        'row_2': 1,
+        'concat_rows': ['row_1', 'row_2'],
 
-        'conv_2_1': 1,
-        'conv_2_2': 'conv_2_1',
-        'pool_2': 'conv_2_2',
+        'concat_inputs': [0, 1],
+        'row_inputs': 'concat_inputs',
 
-        'concat_1': ['pool_1', 'pool_2'],
-        'concat_2': [0, 1],
-
-        'conv_3_1': 'concat_2',
-        'conv_3_2': 'conv_3_1',
-        'pool_3': 'conv_3_2',
-
-        'concat_3': ['concat_1', 'pool_3'],
-        'pool_4': 'concat_3',
-        'pool_5': 'pool_4',
-        'conv_4': 'pool_5',
-        0: 'conv_4'
+        'concat_all': ['concat_rows', 'row_inputs'],
+        'pool_1': 'concat_all',
+        'pool_2': 'pool_1',
+        'conv_end': 'pool_2',
+        0: 'conv_end',
     }
     model = Model(layers, relations, loss=SegmentationDice2D())
     model.initialize_from_X(X)

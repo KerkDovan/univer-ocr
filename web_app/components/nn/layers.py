@@ -1,34 +1,10 @@
 import math
-from collections import Iterable
 
 import numpy as np
 
+from .help_func import make_list_if_not, tuplize
 from .initializers import kaiming_uniform
 from .optimizers import Adam
-
-
-def tuplize(name, var, length):
-    is_negative = False
-    result = None
-
-    if isinstance(var, int):
-        is_negative = var < 0
-        result = tuple(var for _ in range(length))
-
-    elif isinstance(var, Iterable):
-        tmp = tuple(var)
-        if len(tmp) == length and all(isinstance(x, int) for x in tmp):
-            is_negative = any(x < 0 for x in tmp)
-            result = tmp
-
-    if is_negative:
-        raise ValueError(f'{name} cannot be negative, found: {var}')
-    if result is None:
-        raise TypeError(
-            f'{name} must be either int or iterable of ints of length {length}, '
-            f'found {type(var)}')
-
-    return result
 
 
 class BaseLayer:
@@ -96,8 +72,7 @@ class BaseLayer:
         self._mem = {}
 
     def get_output_shape(self, input_shapes):
-        if not isinstance(input_shapes, list):
-            input_shapes = [input_shapes]
+        input_shapes = make_list_if_not(input_shapes)
         raise NotImplementedError()
 
     def params(self):
@@ -154,8 +129,7 @@ class Concat(BaseLayer):
         if self.single_input:
             self.single_input = False
             return grads
-        if not isinstance(grads, list):
-            grads = [grads]
+        grads = make_list_if_not(grads)
         shapes = self._mem
         axis = self.axis
         result = []
@@ -281,8 +255,7 @@ class Convolutional2D(BaseLayer):
         return dx_total
 
     def get_output_shape(self, input_shapes):
-        if not isinstance(input_shapes, list):
-            input_shapes = [input_shapes]
+        input_shapes = make_list_if_not(input_shapes)
         batch_size, height, width, _ = input_shapes[0]
 
         kh, kw = self.kernel_size
@@ -308,8 +281,7 @@ class Flatten(BaseLayer):
         return reshaped
 
     def get_output_shape(self, input_shapes):
-        if not isinstance(input_shapes, list):
-            input_shapes = [input_shapes]
+        input_shapes = make_list_if_not(input_shapes)
         return input_shapes[0][0], np.product(input_shapes[0][1:])
 
 
@@ -356,8 +328,7 @@ class FullyConnected(BaseLayer):
         return dx
 
     def get_output_shape(self, input_shapes):
-        if not isinstance(input_shapes, list):
-            input_shapes = [input_shapes]
+        input_shapes = make_list_if_not(input_shapes)
         return input_shapes[0][0], self.n_output
 
     def params(self):
@@ -436,8 +407,7 @@ class MaxPool2D(BaseLayer):
         return result
 
     def get_output_shape(self, input_shapes):
-        if not isinstance(input_shapes, list):
-            input_shapes = [input_shapes]
+        input_shapes = make_list_if_not(input_shapes)
         batch_size, height, width, channels = input_shapes[0]
 
         kh, kw = self.kernel_size
@@ -459,8 +429,7 @@ class Noop(BaseLayer):
         return grad
 
     def get_output_shape(self, input_shapes):
-        if not isinstance(input_shapes, list):
-            input_shapes = [input_shapes]
+        input_shapes = make_list_if_not(input_shapes)
         return input_shapes
 
 
@@ -474,8 +443,7 @@ class Relu(BaseLayer):
         return result
 
     def get_output_shape(self, input_shapes):
-        if not isinstance(input_shapes, list):
-            input_shapes = [input_shapes]
+        input_shapes = make_list_if_not(input_shapes)
         return input_shapes
 
 
@@ -501,6 +469,5 @@ class Upsample2D(BaseLayer):
         return result
 
     def get_output_shape(self, input_shapes):
-        if not isinstance(input_shapes, list):
-            input_shapes = [input_shapes]
+        input_shapes = make_list_if_not(input_shapes)
         return tuple(np.array(input_shapes[0]) * (1, *self.scale_factor, 1))
