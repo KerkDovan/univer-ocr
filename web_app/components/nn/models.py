@@ -1,7 +1,6 @@
 from .help_func import make_list_if_not
 from .layers import BaseLayer
 from .losses import SoftmaxCrossEntropy
-from .optimizers import Adam
 
 
 class BaseModel(BaseLayer):
@@ -26,17 +25,19 @@ class BaseModel(BaseLayer):
 
 
 class Model(BaseModel):
-    def __init__(self, layers, relations, optimizer=Adam(), loss=SoftmaxCrossEntropy()):
+    def __init__(self, layers, relations, loss=SoftmaxCrossEntropy(), *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
         if not isinstance(layers, dict):
             raise TypeError(f'layers argument must be dict, found: {type(layers).__name__}')
         if not isinstance(relations, dict):
             raise TypeError(f'relations argument must be dict, found: {type(relations).__name__}')
+
         self.layers = layers
         self.relations = relations
         self.relations_backward = {}
         self.inputs_count = None
         self.outputs_count = None
-        self.optimizer = optimizer
         self.loss = loss
         self.input_grads = {}
         self.is_initialized = False
@@ -180,10 +181,21 @@ class Model(BaseModel):
             gradients.append(grad)
 
         self.backward(gradients)
-        return losses
+        reg_loss = self.regularize()
+
+        return {'output_losses': losses, 'regularization_loss': reg_loss}
 
     def predict(self, X):
         return self.forward(X)
+
+    def update_grads(self):
+        for layer in self.layers.values():
+            if layer.trainable:
+                layer.update_grads()
+
+    def clear_grads(self):
+        for layer in self.layers.values():
+            layer.clear_grads()
 
     def get_output_shape(self, input_shapes):
         output_shapes = {}
@@ -225,6 +237,12 @@ class Model(BaseModel):
 
     def count_parameters(self):
         return sum([layer.count_parameters() for layer in self.layers.values()])
+
+    def regularize(self):
+        total_loss = 0
+        for layer in self.layers.values():
+            total_loss += layer.regularize()
+        return total_loss
 
 
 class Sequential(Model):

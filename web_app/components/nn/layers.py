@@ -11,11 +11,13 @@ class BaseLayer:
     def __init__(self,
                  name=None,
                  input_shapes=None,
+                 trainable=True,
                  initializer=kaiming_uniform,
                  regularizer=None,
                  optimizer=Adam()):
         self.name = name
         self.input_shapes = input_shapes
+        self.trainable = trainable
         self.initializer = initializer
         self.regularizer = regularizer
         self.optimizer = optimizer
@@ -83,12 +85,12 @@ class BaseLayer:
             return self.params()[param].value.size
         return sum([param.value.size for param in self.params().values()])
 
-    def regularize(self, weights):
-        if self.reg is None:
+    def regularize(self):
+        if self.regularizer is None:
             return 0
         total_loss = 0
         for param in self.params().values():
-            loss, grad = self.reg(param.value)
+            loss, grad = self.regularizer(param.value)
             param.grad += grad
             total_loss += loss
         return total_loss

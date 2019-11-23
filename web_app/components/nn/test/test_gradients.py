@@ -223,8 +223,8 @@ def main():
 
     def make_conv_submodel(out_ch):
         return Sequential([
-            Convolutional2D((2, 2), out_channels=out_ch),
-            Convolutional2D((2, 2), out_channels=out_ch),
+            Convolutional2D((2, 2), out_channels=out_ch, regularizer=L2(0.1)),
+            Convolutional2D((2, 2), out_channels=out_ch, regularizer=L1(0.1)),
             MaxPool2D((2, 2)),
         ])
 
@@ -259,6 +259,7 @@ def main():
     model = Model(layers, relations, loss=SegmentationDice2D())
     model.initialize_from_X(X)
     print(f'Big non-sequential model: {model.count_parameters()} parameters')
+    print(model.compute_loss_and_gradients(X, y))
     check_model(model, X, y)
 
     print(f'Correct: {correct_cnt}/{total_cnt}\nTotal time: {total_time}')

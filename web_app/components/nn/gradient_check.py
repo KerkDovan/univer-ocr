@@ -32,8 +32,6 @@ def check_gradient(f, x, delta=1e-5, tol=1e-4):
         a = f(x + d)[0]
         b = f(x - d)[0]
         numeric_grad_at_ix = (a - b) / (2 * delta)
-        if isinstance(numeric_grad_at_ix, np.ndarray):
-            numeric_grad_at_ix = np.sum(numeric_grad_at_ix)
 
         if not np.isclose(numeric_grad_at_ix, analytic_grad_at_ix, tol).all():
             print(f"Gradients are different at {ix}.\n"
@@ -127,8 +125,7 @@ def check_model_gradient(model, X, y,
         def helper_func(w):
             param.value = w
             loss = model.compute_loss_and_gradients(X, y)
-            if isinstance(loss, list):
-                loss = np.array(loss)
+            loss = np.sum(loss['output_losses']) + loss['regularization_loss']
             grad = param.grad
             return loss, grad
 
