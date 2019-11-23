@@ -1,6 +1,7 @@
 import datetime
 from functools import wraps
 from itertools import cycle
+from pprint import pprint
 
 import numpy as np
 
@@ -211,6 +212,7 @@ def main():
     }
     model = Model(layers, relations, loss=SigmoidCrossEntropy())
     model.initialize_from_X(X)
+    pprint(model.get_all_output_shapes([x.shape for x in X]))
     print(f'Small non-sequential model: {model.count_parameters()} parameters')
     check_model(model, X, y)
 
@@ -259,6 +261,7 @@ def main():
     model = Model(layers, relations, loss=SegmentationDice2D())
     model.initialize_from_X(X)
     print(f'Big non-sequential model: {model.count_parameters()} parameters')
+    pprint(model.get_all_output_shapes([x.shape for x in X]))
     print(model.compute_loss_and_gradients(X, y))
     check_model(model, X, y)
 

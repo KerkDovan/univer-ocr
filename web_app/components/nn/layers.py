@@ -73,6 +73,9 @@ class BaseLayer:
     def clear_memory(self):
         self._mem = {}
 
+    def get_all_output_shapes(self, input_shapes):
+        return self.get_output_shapes(input_shapes), {}
+
     def get_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
         raise NotImplementedError()
@@ -145,9 +148,10 @@ class Concat(BaseLayer):
         return result
 
     def get_output_shapes(self, input_shapes):
-        input_shapes = make_list_if_not(input_shapes)
+        input_shapes = np.array(make_list_if_not(input_shapes))
         result = [x for x in input_shapes[0]]
-        result[self.axis] = [input_shapes[0][0], *np.sum(input_shapes[1:], axis=0)][self.axis]
+        tmp = np.sum(input_shapes[:, 1:], axis=0)
+        result[self.axis] = [input_shapes[0][0], *tmp][self.axis]
         return [tuple(result)]
 
 

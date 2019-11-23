@@ -198,9 +198,10 @@ class Model(BaseModel):
         for layer in self.layers.values():
             layer.clear_grads()
 
-    def get_output_shapes(self, input_shapes):
+    def get_all_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
         output_shapes = {}
+        all_output_shapes = {}
 
         def rec_get_output_shapes(layer_name):
             if layer_name in output_shapes.keys():
@@ -220,14 +221,21 @@ class Model(BaseModel):
             if isinstance(layer_name, int):
                 return layer_input_shapes[0]
 
-            output_shapes[layer_name] = self.layers[layer_name].get_output_shapes(
-                layer_input_shapes)
+            tmp = self.layers[layer_name].get_all_output_shapes(layer_input_shapes)
+            output_shapes[layer_name] = tmp[0]
+            all_output_shapes.update({
+                f'{layer_name}/{k}': v for k, v in tmp[1].items()
+            })
             return output_shapes[layer_name]
 
         result = []
         for output in range(self.outputs_count):
             result.append(rec_get_output_shapes(output))
-        return result
+        all_output_shapes.update(output_shapes)
+        return result, all_output_shapes
+
+    def get_output_shapes(self, input_shapes):
+        return self.get_all_output_shapes(input_shapes)[0]
 
     def params(self):
         result = {
