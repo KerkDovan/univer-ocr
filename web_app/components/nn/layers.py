@@ -73,7 +73,7 @@ class BaseLayer:
     def clear_memory(self):
         self._mem = {}
 
-    def get_output_shape(self, input_shapes):
+    def get_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
         raise NotImplementedError()
 
@@ -144,11 +144,11 @@ class Concat(BaseLayer):
             prev[axis] += shape[axis]
         return result
 
-    def get_output_shape(self, input_shapes):
-        assert isinstance(input_shapes, list)
+    def get_output_shapes(self, input_shapes):
+        input_shapes = make_list_if_not(input_shapes)
         result = [x for x in input_shapes[0]]
-        result[self.axis] = np.sum(input_shapes, axis=0)[self.axis]
-        return tuple(result)
+        result[self.axis] = [input_shapes[0][0], *np.sum(input_shapes[1:], axis=0)][self.axis]
+        return [tuple(result)]
 
 
 class Convolutional2D(BaseLayer):
@@ -197,7 +197,7 @@ class Convolutional2D(BaseLayer):
         ph, pw = self.padding
         sh, sw = self.stride
 
-        output_shape = self.get_output_shape(X.shape)
+        output_shape = self.get_output_shapes(X.shape)[0]
         _, out_height, out_width, _ = output_shape
 
         if ph != 0 or pw != 0:
@@ -256,7 +256,7 @@ class Convolutional2D(BaseLayer):
 
         return dx_total
 
-    def get_output_shape(self, input_shapes):
+    def get_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
         batch_size, height, width, _ = input_shapes[0]
 
@@ -267,7 +267,7 @@ class Convolutional2D(BaseLayer):
         out_height = math.floor((height + 2 * ph - (kh - 1) - 1) / sh + 1)
         out_width = math.floor((width + 2 * pw - (kw - 1) - 1) / sw + 1)
 
-        return batch_size, out_height, out_width, self.out_channels
+        return [(batch_size, out_height, out_width, self.out_channels)]
 
     def params(self):
         return {'w': self.w}
@@ -276,15 +276,15 @@ class Convolutional2D(BaseLayer):
 class Flatten(BaseLayer):
     def _forward(self, X, mem_id=0):
         self._mem[mem_id] = X.shape
-        return np.reshape(X, self.get_output_shape(X.shape))
+        return np.reshape(X, self.get_output_shapes(X.shape)[0])
 
     def _backward(self, grad, mem_id=0):
         reshaped = np.reshape(grad, self._mem[mem_id])
         return reshaped
 
-    def get_output_shape(self, input_shapes):
+    def get_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
-        return input_shapes[0][0], np.product(input_shapes[0][1:])
+        return [(input_shapes[0][0], np.product(input_shapes[0][1:]))]
 
 
 class FullyConnected(BaseLayer):
@@ -329,9 +329,9 @@ class FullyConnected(BaseLayer):
         self.w.grad += dw
         return dx
 
-    def get_output_shape(self, input_shapes):
+    def get_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
-        return input_shapes[0][0], self.n_output
+        return [(input_shapes[0][0], self.n_output)]
 
     def params(self):
         return {'w': self.w}
@@ -353,7 +353,7 @@ class MaxPool2D(BaseLayer):
         ph, pw = self.padding
         sh, sw = self.stride
 
-        output_shape = self.get_output_shape(X.shape)
+        output_shape = self.get_output_shapes(X.shape)[0]
         _, out_height, out_width, _ = output_shape
 
         if ph != 0 or pw != 0:
@@ -408,7 +408,7 @@ class MaxPool2D(BaseLayer):
 
         return result
 
-    def get_output_shape(self, input_shapes):
+    def get_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
         batch_size, height, width, channels = input_shapes[0]
 
@@ -420,7 +420,7 @@ class MaxPool2D(BaseLayer):
         out_height = ceil((height + 2 * ph - (kh - 1) - 1) / sh + 1)
         out_width = ceil((width + 2 * pw - (kw - 1) - 1) / sw + 1)
 
-        return batch_size, out_height, out_width, channels
+        return [(batch_size, out_height, out_width, channels)]
 
 
 class Noop(BaseLayer):
@@ -430,9 +430,8 @@ class Noop(BaseLayer):
     def _backward(self, grad, mem_id=0):
         return grad
 
-    def get_output_shape(self, input_shapes):
-        input_shapes = make_list_if_not(input_shapes)
-        return input_shapes
+    def get_output_shapes(self, input_shapes):
+        return make_list_if_not(input_shapes)
 
 
 class Relu(BaseLayer):
@@ -444,9 +443,8 @@ class Relu(BaseLayer):
         result = grad * self._mem[mem_id]
         return result
 
-    def get_output_shape(self, input_shapes):
-        input_shapes = make_list_if_not(input_shapes)
-        return input_shapes
+    def get_output_shapes(self, input_shapes):
+        return make_list_if_not(input_shapes)
 
 
 class Upsample2D(BaseLayer):
@@ -470,6 +468,7 @@ class Upsample2D(BaseLayer):
 
         return result
 
-    def get_output_shape(self, input_shapes):
+    def get_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
-        return tuple(np.array(input_shapes[0]) * (1, *self.scale_factor, 1))
+        return [tuple((input_shapes[0][0],
+                       *(np.array(input_shapes[0][1:]) * (*self.scale_factor, 1))))]

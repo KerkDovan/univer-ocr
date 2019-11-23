@@ -88,7 +88,8 @@ class Model(BaseModel):
 
             if not self.layers[layer_name].is_initialized:
                 self.layers[layer_name].initialize(layer_input_shapes)
-            layer_shapes[layer_name] = self.layers[layer_name].get_output_shape(layer_input_shapes)
+            layer_shapes[layer_name] = self.layers[layer_name].get_output_shapes(
+                layer_input_shapes)
 
             currently_being_visited[layer_name] = False
             return layer_shapes[layer_name]
@@ -197,7 +198,8 @@ class Model(BaseModel):
         for layer in self.layers.values():
             layer.clear_grads()
 
-    def get_output_shape(self, input_shapes):
+    def get_output_shapes(self, input_shapes):
+        input_shapes = make_list_if_not(input_shapes)
         output_shapes = {}
 
         def rec_get_output_shapes(layer_name):
@@ -218,7 +220,7 @@ class Model(BaseModel):
             if isinstance(layer_name, int):
                 return layer_input_shapes[0]
 
-            output_shapes[layer_name] = self.layers[layer_name].get_output_shape(
+            output_shapes[layer_name] = self.layers[layer_name].get_output_shapes(
                 layer_input_shapes)
             return output_shapes[layer_name]
 
