@@ -38,6 +38,11 @@ def trainer_message(message):
     emit('message', message, broadcast=True)
 
 
+@socketio.on('progress_tracker', namespace='/train-ws')
+def trainer_progress_tracker(status):
+    emit('progress_tracker', status, broadcast=True)
+
+
 @socketio.on('stop', namespace='/train-ws')
 def stop():
     global trainer

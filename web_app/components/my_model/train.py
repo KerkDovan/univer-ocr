@@ -28,20 +28,17 @@ def message(*message, sep=' ', end='\n'):
     emit('message', text)
 
 
-previous = None
-
-
 def print_diff(status):
-    global previous
-    if previous is None:
-        previous = status
+    if isinstance(status, str):
+        message(status)
         return
-    changed = []
-    for name, event in status.items():
-        if previous[name] != event:
-            changed.append(f'{name}: {str(event)}')
-    message(changed)
-    previous = status
+    status = {
+        name: {
+            e['name']: {'done': e['done'], 'time': str(e['time'])}
+            for e in events}
+        for name, events in status.items()
+    }
+    emit('progress_tracker', status)
 
 
 def train_model():

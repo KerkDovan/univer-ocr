@@ -44,6 +44,9 @@ class BaseProgressTracker:
     def stop_tracking(self, name, event):
         pass
 
+    def message(self, message):
+        pass
+
 
 class ProgressTracker(BaseProgressTracker):
     def __init__(self, handler=print):
@@ -67,6 +70,9 @@ class ProgressTracker(BaseProgressTracker):
     def stop_tracking(self, name, event):
         self.layers[name][event].stop()
         self.handler(self.get_summary())
+
+    def message(self, message):
+        self.handler(message)
 
 
 def track_this(event):

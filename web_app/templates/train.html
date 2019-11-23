@@ -16,19 +16,31 @@
 
 {% block content %}
 
-<div class="d-flex justify-content-between">
+<div class="d-flex justify-content-between mb-3">
   <div>
-    <button class="mb-3 btn btn-sm btn-primary" id="start-btn">Start</button>
+    <button class="btn btn-sm btn-primary" id="start-btn">Start</button>
   </div>
   <div>
-    <button class="mb-3 btn btn-sm btn-outline-warning" id="clear-btn">Clear</button>
-    <button class="mb-3 btn btn-sm btn-outline-danger" id="stop-btn">Stop</button>
+    <button class="btn btn-sm btn-outline-warning" id="clear-btn">Clear</button>
+    <button class="btn btn-sm btn-outline-danger" id="stop-btn">Stop</button>
   </div>
 </div>
 
-<div>
-  <textarea class="form-control" id="messages" rows="30" readonly></textarea>
+<div class="mb-3">
+  <textarea class="form-control" id="messages" rows="15" readonly></textarea>
 </div>
+
+<table class="table table-sm mb-3" id="status">
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>Forward</th>
+      <th>Backward</th>
+    </tr>
+  </thead>
+  <tbody>
+  </tbody>
+</table>
 
 {% endblock content %}
 
@@ -39,23 +51,53 @@
 
 "use strict";
 
+$.fn.exists = function () {
+  return this.length !== 0;
+}
+
+function make_status_row(name, safe_name) {
+  return `<tr id="${safe_name}">` +
+    `<td>${name}</td>` +
+    `<td class="status-forward">False</td>` +
+    `<td class="status-backward">False</td>` +
+    `</tr>`;
+}
+
 window.onload = function() {
-  function append(message) {
+  function append_message(message) {
     $("#messages").append(message);
     document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
   }
 
   let socket = io.connect("ws://127.0.0.1/train-ws");
-  socket.on('message', function(message) {
-    append(message);
+  socket.on("message", function(message) {
+    append_message(message);
+  });
+  socket.on("progress_tracker", function(status) {
+    for (let [name, events] of Object.entries(status)) {
+      let safe_name = name.split('/').join('-');
+      let row_name = '#' + safe_name;
+      if (!$(row_name).exists()) {
+        $("#status tbody").append(make_status_row(name, safe_name));
+      }
+      for (let [event_name, event] of Object.entries(events)) {
+        let result = event.done ? event.time : "False";
+        let cell = $(row_name + ` .status-${event_name}`);
+        cell.html(result);
+        if (event.done) {
+          cell.addClass("table-success");
+        }
+      }
+    }
   });
 
   $("#start-btn").click(function () {
-    append("=".repeat(80) + "\n\n");
+    append_message("=".repeat(80) + "\n\n");
     socket.emit("start");
   });
   $("#clear-btn").click(function () {
     $("#messages").html("");
+    $("#status tbody").html("");
   });
   $("#stop-btn").click(function () {
     socket.emit("stop");
