@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw
 
 from faker import Faker
 
-from ..primitives import CHARS, FONTS_LIST, encode_char
+from ..primitives import BITS_COUNT, CHARS, FONTS_LIST, encode_char
 
 
 class LayeredImage:
@@ -19,8 +19,7 @@ class LayeredImage:
         'letter_spacing',
         'char_mask_box',
         'char_full_box',
-        *[f'char_box_{encode_char(c)}' for c in CHARS],
-        'char_box_unknown',
+        *[f'bit_{i}' for i in range(BITS_COUNT)],
     ]
     colors = {
         'image': (0, 0, 0, 255),
@@ -35,6 +34,7 @@ class LayeredImage:
         'letter_spacing': (200, 0, 200, 100),
         'char_mask_box': (200, 200, 0, 100),
         'char_full_box': (200, 200, 0, 100),
+        **{f'bit_{i}': (200, 200, 0, 100) for i in range(BITS_COUNT)},
     }
 
     def __init__(self, width, height, bg_color, use_demo=False):
@@ -164,22 +164,25 @@ class LayeredImage:
                 position, char, fill=self.colors_demo['image'], font=font)
 
     def _mask_box(self, char, coords):
-        char = encode_char(char)
         self.draw['char_mask_box'].rectangle(coords, fill=self.colors['char_mask_box'])
         if self.use_demo:
             self.draw_demo['char_mask_box'].rectangle(
                 coords, fill=self.colors_demo['char_mask_box'])
 
     def _full_box(self, char, coords):
-        char = encode_char(char)
+        bits = encode_char(char)
         self.draw['char_full_box'].rectangle(coords, fill=self.colors['char_full_box'])
-        self.draw['char_box_' + char].rectangle(
-            coords, fill=self.colors['char_mask_box'])
+        for i, bit in enumerate(bits):
+            if bit == '0':
+                continue
+            self.draw[f'bit_{i}'].rectangle(coords, fill=self.colors[f'bit_{i}'])
         if self.use_demo:
             self.draw_demo['char_full_box'].rectangle(
                 coords, fill=self.colors_demo['char_full_box'])
-            self.draw_demo['char_box_' + char].rectangle(
-                coords, fill=self.colors_demo['char_mask_box'])
+            for i, bit in enumerate(bits):
+                if bit == '0':
+                    continue
+                self.draw_demo[f'bit_{i}'].rectangle(coords, fill=self.colors_demo[f'bit_{i}'])
 
     def _letter_spacing(self, coords):
         self.draw['letter_spacing'].rectangle(coords, fill=self.colors['letter_spacing'])

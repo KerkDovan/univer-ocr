@@ -1,37 +1,30 @@
 import string
+from math import ceil, log
 
 from PIL.ImageFont import truetype
 
 RUSSIAN_LOWERCASE = u'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'
 RUSSIAN_UPPERCASE = u'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
 RUSSIAN = RUSSIAN_LOWERCASE + RUSSIAN_UPPERCASE
-CHARS = RUSSIAN + string.digits + string.ascii_letters + string.punctuation + ' '
+CHARS = ' ' + RUSSIAN + string.digits + string.ascii_letters + string.punctuation
 
-PUNCTUATION_ENCODING_MAP = {
-    '!': 'exclamation', '"': 'double_quote', '#': 'hash_sign', '$': 'dollar_sign',
-    '%': 'percent', '&': 'ampersand', '\'': 'single_quote', '(': 'op_parentheses',
-    ')': 'cl_parentheses', '*': 'asterisk', '+': 'plus', ',': 'comma', '-': 'minus',
-    '.': 'point', '/': 'slash', ':': 'colon', ';': 'semicolon', '<': 'less', '=': 'equal',
-    '>': 'more', '?': 'question', '@': 'at_sign', '[': 'op_square', '\\': 'backslash',
-    ']': 'cl_square', '^': 'caret', '_': 'underscore', '`': 'apostrophe', '{': 'op_curly',
-    '|': 'vertical_bar', '}': 'cl_curly', '~': 'tilde', ' ': 'space',
+BITS_COUNT = ceil(log(len(CHARS) + 1, 2))
+
+ENCODING_MAP = {
+    char: (bin(char_id)[2:][::-1] + '0' * BITS_COUNT)[:BITS_COUNT]
+    for char_id, char in enumerate(CHARS)
 }
-PUNCTUATION_DECODING_MAP = {value: key for key, value in PUNCTUATION_ENCODING_MAP.items()}
+DECODING_MAP = {encoded: char for char, encoded in ENCODING_MAP.items()}
 
 
 def encode_char(char):
     assert len(char) == 1
-    if char not in CHARS:
-        return 'unknown'
-    if char not in string.punctuation + ' ':
-        return char
-    return PUNCTUATION_ENCODING_MAP.get(char, 'unknown')
+    return ENCODING_MAP.get(char, '1' * BITS_COUNT)
 
 
-def decode_char(encoded_char):
-    if encode_char in CHARS:
-        return encode_char
-    return PUNCTUATION_DECODING_MAP.get(encode_char, 'unknown')
+def decode_char(encoded):
+    assert len(encoded) == BITS_COUNT and set(encoded) in [{'0'}, {'1'}, {'0', '1'}]
+    return DECODING_MAP.get(encoded, 'unknown')
 
 
 class Font:

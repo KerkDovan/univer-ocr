@@ -8,10 +8,10 @@ def make_unet(out_channels):
     def double_conv(out_channels):
         return Model(layers={
             'conv_1': Convolutional2D((3, 3), out_channels=out_channels, padding=1,
-                                      regularizer=L2(0.1)),
+                                      regularizer=L2(0.01)),
             'relu_1': Relu(),
             'conv_2': Convolutional2D((3, 3), out_channels=out_channels, padding=1,
-                                      regularizer=L2(0.1)),
+                                      regularizer=L2(0.01)),
             'relu_2': Relu(),
         }, relations={
             'conv_1': 0,
@@ -33,7 +33,7 @@ def make_unet(out_channels):
             0: 'double_conv',
         })
 
-    ch_count = [4, 8, 12, 24] + [32] + [48, 64, 96, 128]
+    ch_count = [2, 4, 8, 16] + [32] + [16, 8, 4, 2]
     model = Model(layers={
         'double_conv_down_1': double_conv(ch_count[0]),
         'pool_1': MaxPool2D(2),

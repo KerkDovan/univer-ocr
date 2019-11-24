@@ -1,7 +1,7 @@
 import numpy as np
 from scipy import ndimage
 
-from ..primitives import CHARS, encode_char
+from ..primitives import BITS_COUNT, decode_char
 
 
 def label_layer(layer):
@@ -56,11 +56,11 @@ def interpret(layers):
     line_bottom_layer = np.array(layers['line_bottom'])
     not_letter_spacing_layer = ~(np.array(layers['letter_spacing']) > 0)
     char_full_box_layer = np.array(layers['char_full_box']) & not_letter_spacing_layer
-    char_box_layers = np.array([
-        np.array(layers['char_box_' + encode_char(char)]) > 0
-        for char in CHARS
+    bits_layers = np.array([
+        np.array(layers[f'bit_{i}']) > 0
+        for i in range(BITS_COUNT)
     ]) & not_letter_spacing_layer
-    pole = np.ones(char_box_layers.shape[0], dtype=np.bool)
+    pole = np.ones(bits_layers.shape[0], dtype=np.bool)
 
     char_box_objects = [
         ((y.start + y.stop - 1) // 2, (x.start + x.stop - 1) // 2)
@@ -100,12 +100,14 @@ def interpret(layers):
                 start + cm_top[l_id], start + cm_bottom[l_id], positions)
             res = ''
             for y, x in iter_by_indices(positions, letter_sort_ids):
-                possible_char_ids = np.argwhere(char_box_layers[:, y, x] & pole)
-                if possible_char_ids.shape[0] == 0:
-                    print(f'Cannot recognize a char at position [{x};{y}]')
+                bits_ids = np.argwhere(bits_layers[:, y, x] & pole)[:, 0]
+                encoded = ''.join('1' if i in bits_ids else '0'
+                                  for i in range(BITS_COUNT))
+                decoded = decode_char(encoded)
+                if decoded == 'unknown':
+                    print(f'Could not recognize character at position [{x};{y}]')
                     continue
-                char_id = possible_char_ids[0, 0]
-                res += CHARS[char_id]
+                res += decoded
             result[(p_id, l_id)] = ''.join(res)
 
     return result
