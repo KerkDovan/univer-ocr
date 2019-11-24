@@ -9,11 +9,19 @@ from . import main_bp
 from .test_nn_ws import test_scripts
 
 raw, demo = None, None
+generation_time = datetime.now() - datetime.now()
 
 
 def generate_demo():
-    global raw, demo
+    global raw, demo, generation_time
+    ts = datetime.now()
     raw, demo = ig.generate_demo(1920, 1080)
+    generation_time = datetime.now() - ts
+
+
+def reset_generation_time():
+    global generation_time
+    generation_time = datetime.now() - datetime.now()
 
 
 @main_bp.route('/')
@@ -30,15 +38,15 @@ def generate_new():
 
 @main_bp.route('/view_layers/<mode>')
 def view_layers(mode):
-    ts = datetime.now()
     if demo is None or raw is None:
         generate_demo()
     images = demo if mode == 'demo' else raw
     context = {
-        'time_consumed': datetime.now() - ts,
+        'time_consumed': generation_time,
         'mode': mode,
         'layer_names': list(images.keys()),
     }
+    reset_generation_time()
     return render_template('view_layers.html', **context)
 
 
@@ -79,13 +87,13 @@ def train():
 
 @main_bp.route('/interpret_data')
 def interpret_data():
-    global raw, demo
-    ts = datetime.now()
     if raw is None:
         generate_demo()
+    ts = datetime.now()
     data = interpret(raw)
     context = {
-        'time_consumed': datetime.now() - ts,
+        'time_consumed': generation_time + datetime.now() - ts,
         'data': data,
     }
+    reset_generation_time()
     return render_template('interpret_data.html', **context)
