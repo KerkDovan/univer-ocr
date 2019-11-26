@@ -15,6 +15,9 @@ class BaseModel(BaseLayer):
             param.clear_grad()
         return loss
 
+    def test(self, X, y):
+        raise NotImplementedError()
+
     def predict(self, X):
         raise NotImplementedError()
 
@@ -185,6 +188,26 @@ class Model(BaseModel):
 
         return {'output_losses': losses, 'regularization_loss': reg_loss}
 
+    def train(self, X, y):
+        losses = self.compute_loss_and_gradients(X, y)
+        self.update_grads()
+        self.clear_grads()
+        return losses
+
+    def test(self, X, y):
+        X = make_list_if_not(X)
+        y = make_list_if_not(y)
+
+        predicted = self.forward(X)
+
+        losses = []
+        for key in range(self.outputs_count):
+            loss_func = self.loss[key] if isinstance(self.loss, list) else self.loss
+            loss, _ = loss_func(predicted[key], y[key])
+            losses.append(loss)
+
+        return {'output_losses': losses}
+
     def predict(self, X):
         return self.forward(X)
 
@@ -243,6 +266,16 @@ class Model(BaseModel):
             for name, param in layer.params().items()
         }
         return result
+
+    def get_weights(self):
+        return {name: layer.get_weights() for name, layer in self.layers.items()}
+
+    def set_weights(self, weights):
+        for name, layer in self.layers.items():
+            layer_weights = weights.get(name, None)
+            if layer_weights is None:
+                continue
+            layer.set_weights(layer_weights)
 
     def count_parameters(self):
         return sum([layer.count_parameters() for layer in self.layers.values()])

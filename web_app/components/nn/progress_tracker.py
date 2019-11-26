@@ -18,6 +18,12 @@ class Event:
         self.time = self.stopped - self.started
         self.done = True
 
+    def reset(self):
+        self.done = False
+        self.started = None
+        self.stopped = None
+        self.time = None
+
     def to_dict(self):
         return {
             'name': self.name,
@@ -47,6 +53,9 @@ class BaseProgressTracker:
     def message(self, message):
         pass
 
+    def reset(self):
+        pass
+
 
 class ProgressTracker(BaseProgressTracker):
     def __init__(self, handler=print):
@@ -73,6 +82,12 @@ class ProgressTracker(BaseProgressTracker):
 
     def message(self, message):
         self.handler(message)
+
+    def reset(self):
+        self.handler('reset')
+        for events in self.layers.values():
+            for event in events.values():
+                event.reset()
 
 
 def track_this(event):

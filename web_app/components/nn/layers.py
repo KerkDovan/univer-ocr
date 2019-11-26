@@ -92,6 +92,16 @@ class BaseLayer:
     def params(self):
         return {}
 
+    def get_weights(self):
+        return {name: param.value.tolist() for name, param in self.params().items()}
+
+    def set_weights(self, weights):
+        for name, param in self.params().items():
+            weight = weights.get(name, None)
+            if weight is None:
+                continue
+            param.value = np.array(weight)
+
     def count_parameters(self, param=None):
         if param is not None:
             return self.params()[param].value.size

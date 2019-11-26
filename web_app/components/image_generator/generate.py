@@ -97,14 +97,14 @@ class LayeredImage:
             rand_width = self.width - (t_width + margin2) - left_margin
             rand_height = self.height - (t_height + margin2)
             if rand_width < left_margin or rand_height < 0:
-                print(f'Paragraph is too big for the image')
+                # print(f'Paragraph is too big for the image')
                 return
             x = random.randint(left_margin, rand_width)
             y = random.randint(0, rand_height)
             if np.sum(ones * self.mask[y:y + t_height + margin2, x:x + t_width + margin2]) == 0:
                 break
             if retries > 100:
-                print(f'Number of retries exceeded')
+                # print(f'Number of retries exceeded')
                 return
             retries += 1
         x, y = x + margin, y + margin
@@ -251,6 +251,6 @@ def generate_train_data(width, height):
     bg_color = (*np.random.randint(256, size=(3,)), 255)
     layers = LayeredImage(width, height, bg_color)
     for i in range(30):
-        print(i, end=' ')
+        # print(i, end=' ')
         layers.add_paragraph(random_text(), random_font())
     return layers.get_raw()

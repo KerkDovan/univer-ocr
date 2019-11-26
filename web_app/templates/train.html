@@ -21,6 +21,9 @@
     <button class="btn btn-sm btn-primary" id="start-btn">Start</button>
   </div>
   <div>
+    <button class="btn btn-sm" id="step"></a>
+  </div>
+  <div>
     <button class="btn btn-sm btn-outline-warning" id="clear-btn">Clear</button>
     <button class="btn btn-sm btn-outline-danger" id="stop-btn">Stop</button>
   </div>
@@ -68,12 +71,46 @@ window.onload = function() {
     $("#messages").append(message);
     document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
   }
+  function reset_step() {
+    $("#step").removeClass("btn-outline-warning btn-outline-primary btn-outline-success");
+    $("#step").html("");
+  }
 
   let socket = io.connect("ws://127.0.0.1/train-ws");
   socket.on("message", function(message) {
     append_message(message);
   });
   socket.on("progress_tracker", function(status) {
+    if (typeof status == "string") {
+      if (status == "reset") {
+        reset_step();
+        for (let cell_class of ["status-forward", "status-backward"]) {
+          $("#status td." + cell_class).each(function () {
+            $(this).html("False");
+            $(this).removeClass("table-success");
+          });
+        }
+      }
+      else if (status == "generating_data") {
+        reset_step();
+        $("#step").html("Generating data");
+        $("#step").addClass("btn-outline-warning");
+      }
+      else if (status == "training") {
+        reset_step();
+        $("#step").html("Training");
+        $("#step").addClass("btn-outline-primary");
+      }
+      else if (status == "testing") {
+        reset_step();
+        $("#step").html("Testing");
+        $("#step").addClass("btn-outline-success");
+      }
+      else {
+        append_message(status + "\n");
+      }
+      return;
+    }
     for (let [name, events] of Object.entries(status)) {
       let safe_name = name.split('/').join('-');
       let row_name = '#' + safe_name;
@@ -96,6 +133,7 @@ window.onload = function() {
     socket.emit("start");
   });
   $("#clear-btn").click(function () {
+    reset_step();
     $("#messages").html("");
     $("#status tbody").html("");
   });

@@ -3,6 +3,12 @@ from collections import namedtuple
 import numpy as np
 
 
+class State:
+    def __init__(self, attributes, defaults):
+        for attr, default in zip(attributes, defaults):
+            setattr(self, attr, default)
+
+
 class BaseOptimizer:
     def __init__(self):
         self.groups = {}
@@ -33,7 +39,7 @@ class Adagrad(BaseOptimizer):
         param.value -= adaptive_lr * param.grad
 
     def _init_state(self):
-        return namedtuple('State', 'accumulated', defaults=self.initials)()
+        return State(['accumulated'], self.initials)
 
 
 class Adam(BaseOptimizer):
@@ -53,7 +59,7 @@ class Adam(BaseOptimizer):
         param.value -= adaptive_lr * state.velocity
 
     def _init_state(self):
-        return namedtuple('State', 'velocity accumulated', defaults=self.initials)()
+        return State(['velocity', 'accumulated'], self.initials)
 
 
 class Momentum(BaseOptimizer):
@@ -70,7 +76,7 @@ class Momentum(BaseOptimizer):
         param.value += state.velocity
 
     def _init_state(self):
-        return namedtuple('State', 'velocity', defaults=self.initials)()
+        return State(['velocity'], self.initials)
 
 
 class RMSProp(BaseOptimizer):
@@ -87,4 +93,4 @@ class RMSProp(BaseOptimizer):
         param.value -= adaptive_lr * param.grad
 
     def _init_state(self):
-        return namedtuple('State', 'accumulated', defaults=self.initials)()
+        return State(['accumulated'], self.initials)
