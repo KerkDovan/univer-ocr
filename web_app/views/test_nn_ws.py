@@ -19,13 +19,14 @@ def test_connect():
 
 
 @socketio.on('start', namespace='/test-nn-ws')
-def start(message):
+def start(args):
     global tester
     if tester is not None:
         emit('message', 'Already started, wait for a result\n\n')
         return
     try:
-        tester = Popen([python_executable, '-u', tester_filepath, message['test_name']],
+        tester = Popen([str(python_executable), '-u', str(tester_filepath),
+                        str(args['test_name']), str(args['use_gpu'])],
                        stdout=PIPE, stderr=PIPE)
         for output in tester.stdout:
             emit('message', output.decode('utf-8'))

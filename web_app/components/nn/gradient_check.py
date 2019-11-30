@@ -1,4 +1,7 @@
 import numpy as np
+import cupy as cp
+
+from .gpu import CP
 
 
 def check_gradient(f, x, delta=1e-5, tol=1e-4):
@@ -13,27 +16,29 @@ def check_gradient(f, x, delta=1e-5, tol=1e-4):
     Return:
         bool indicating whether gradients match or not
     """
-    assert isinstance(x, np.ndarray)
-    assert x.dtype == np.float
+    assert isinstance(x, CP.cp.ndarray)
+    assert x.dtype == CP.cp.float
 
     fx, analytic_grad = f(x)
+    if isinstance(analytic_grad, list):
+        analytic_grad = analytic_grad[0]
     analytic_grad = analytic_grad.copy()
 
     assert analytic_grad.shape == x.shape, f'{analytic_grad.shape} != {x.shape}'
 
-    it = np.nditer(x, flags=['multi_index'], op_flags=['readwrite'])
+    it = np.nditer(cp.asnumpy(x), flags=['multi_index'], op_flags=['readwrite'])
     while not it.finished:
         ix = it.multi_index
         analytic_grad_at_ix = analytic_grad[ix]
         numeric_grad_at_ix = 0
 
-        d = np.zeros_like(x)
+        d = CP.cp.zeros_like(x)
         d[ix] = delta
         a = f(x + d)[0]
         b = f(x - d)[0]
         numeric_grad_at_ix = (a - b) / (2 * delta)
 
-        if not np.isclose(numeric_grad_at_ix, analytic_grad_at_ix, tol).all():
+        if not CP.cp.isclose(numeric_grad_at_ix, analytic_grad_at_ix, tol).all():
             print(f"Gradients are different at {ix}.\n"
                   f"  Analytic: {analytic_grad_at_ix},\n"
                   f"  Numeric: {numeric_grad_at_ix},\n"
@@ -58,12 +63,16 @@ def check_layer_gradient(layer, x, delta=1e-5, tol=1e-4):
         bool indicating whether gradients match or not
     """
     output = layer.forward(x)
-    output_weight = np.random.randn(*output.shape)
+    if isinstance(output, list):
+        output = output[0]
+    output_weight = CP.cp.random.randn(*output.shape)
 
     def helper_func(x):
         output = layer.forward(x)
-        loss = np.sum(output * output_weight)
-        d_out = np.ones_like(output) * output_weight
+        if isinstance(output, list):
+            output = output[0]
+        loss = CP.cp.sum(output * output_weight)
+        d_out = CP.cp.ones_like(output) * output_weight
         grad = layer.backward(d_out)
         return loss, grad
 
@@ -88,13 +97,17 @@ def check_layer_param_gradient(layer, x,
     initial_w = param.value
 
     output = layer.forward(x)
-    output_weight = np.random.randn(*output.shape)
+    if isinstance(output, list):
+        output = output[0]
+    output_weight = CP.cp.random.randn(*output.shape)
 
     def helper_func(w):
         param.value = w
         output = layer.forward(x)
-        loss = np.sum(output * output_weight)
-        d_out = np.ones_like(output) * output_weight
+        if isinstance(output, list):
+            output = output[0]
+        loss = CP.cp.sum(output * output_weight)
+        d_out = CP.cp.ones_like(output) * output_weight
         layer.backward(d_out)
         grad = param.grad
         return loss, grad
@@ -125,7 +138,9 @@ def check_model_gradient(model, X, y,
         def helper_func(w):
             param.value = w
             loss = model.compute_loss_and_gradients(X, y)
-            loss = np.sum(loss['output_losses']) + loss['regularization_loss']
+            out_loss = loss['output_losses']
+            reg_loss = loss['regularization_loss']
+            loss = CP.cp.sum(out_loss[0]) + reg_loss
             grad = param.grad
             return loss, grad
 

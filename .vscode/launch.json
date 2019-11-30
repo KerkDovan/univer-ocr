@@ -20,10 +20,18 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Train Neural Network",
+            "name": "Train Neural Network - CPU",
             "type": "python",
             "request": "launch",
             "program": "D:\\MyData\\Coding\\Python\\univer-ocr\\train.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Train Neural Network - GPU",
+            "type": "python",
+            "request": "launch",
+            "program": "D:\\MyData\\Coding\\Python\\univer-ocr\\train.py",
+            "args": ["True"],
             "console": "integratedTerminal"
         }
     ]

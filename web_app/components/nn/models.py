@@ -48,6 +48,7 @@ class Model(BaseModel):
 
     def initialize(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
+        self.input_shapes = input_shapes
 
         self.inputs_count = max(v for k, v in self.relations.items() if isinstance(v, int)) + 1
         self.outputs_count = max(k for k, v in self.relations.items() if isinstance(k, int)) + 1

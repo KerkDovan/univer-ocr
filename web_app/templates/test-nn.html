@@ -16,15 +16,21 @@
 
 {% block content %}
 
-<div class="d-flex justify-content-between">
+<div class="d-flex justify-content-between mb-3">
   <div>
     {% for name, title in tests %}
-    <button class="mb-3 btn btn-sm btn-primary" id="{{name}}-btn">{{title}}</button>
+    <button class="btn btn-sm btn-primary" id="{{name}}-btn">{{title}}</button>
     {% endfor %}
+    <div class="ml-2 custom-control-inline align-middle">
+      <div class="custom-control custom-control-inline custom-switch">
+        <input type="checkbox" class="custom-control-input" id="use-gpu">
+        <label class="custom-control-label" for="use-gpu">Use GPU</label>
+      </div>
+    </div>
   </div>
   <div>
-    <button class="mb-3 btn btn-sm btn-outline-warning" id="clear-btn">Clear</button>
-    <button class="mb-3 btn btn-sm btn-outline-danger" id="stop-btn">Stop</button>
+    <button class="btn btn-sm btn-outline-warning" id="clear-btn">Clear</button>
+    <button class="btn btn-sm btn-outline-danger" id="stop-btn">Stop</button>
   </div>
 </div>
 
@@ -51,7 +57,10 @@ window.onload = function() {
   {% for name, _ in tests %}
   $("#{{name}}-btn").click(function () {
     $("#messages").append("=".repeat(80) + "\n\n");
-    socket.emit("start", {"test_name": "{{name}}"});
+    socket.emit("start", {
+      "test_name": "{{name}}",
+      "use_gpu": $("#use-gpu").prop("checked"),
+    });
   });
   {% endfor %}
   $("#clear-btn").click(function () {

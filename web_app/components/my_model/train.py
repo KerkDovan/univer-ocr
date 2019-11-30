@@ -6,6 +6,7 @@ from pprint import pformat
 import numpy as np
 
 from ..image_generator.generate import LayeredImage, generate_train_data
+from ..nn.gpu import CP
 from ..nn.progress_tracker import ProgressTracker
 from ..nn.trainer import Trainer
 from .model import make_unet
@@ -44,7 +45,14 @@ def emit_status(status):
     emit('progress_tracker', status)
 
 
-def train_model():
+def train_model(use_gpu):
+    if use_gpu:
+        CP.use_gpu()
+        print('Using GPU')
+    else:
+        CP.use_cpu()
+        print('Using CPU')
+
     def generate_data():
         picture = generate_train_data(640, 480)
         layer_names = LayeredImage.layer_names
@@ -57,7 +65,7 @@ def train_model():
         X = np.reshape(X, (1, *X.shape)) / 256
         y = np.reshape(y, (1, *y.shape)) / 256
 
-        return X, y
+        return CP.cp.array(X), CP.cp.array(y)
 
     tracker = ProgressTracker(emit_status)
     tracker.reset()

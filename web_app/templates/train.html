@@ -19,6 +19,12 @@
 <div class="d-flex justify-content-between mb-3">
   <div>
     <button class="btn btn-sm btn-primary" id="start-btn">Start</button>
+    <div class="ml-2 custom-control-inline align-middle">
+      <div class="custom-control custom-control-inline custom-switch">
+        <input type="checkbox" class="custom-control-input" id="use-gpu">
+        <label class="custom-control-label" for="use-gpu">Use GPU</label>
+      </div>
+    </div>
   </div>
   <div>
     <button class="btn btn-sm" id="step"></a>
@@ -130,7 +136,9 @@ window.onload = function() {
 
   $("#start-btn").click(function () {
     append_message("=".repeat(80) + "\n\n");
-    socket.emit("start");
+    socket.emit("start", {
+      "use_gpu": $("#use-gpu").prop("checked"),
+    });
   });
   $("#clear-btn").click(function () {
     reset_step();

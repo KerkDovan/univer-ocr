@@ -16,13 +16,14 @@ def test_connect():
 
 
 @socketio.on('start', namespace='/train-ws')
-def start():
+def start(args):
     global trainer
     if trainer is not None:
         emit('message', 'Already started, wait for a result\n\n')
         return
     try:
-        trainer = Popen([python_executable, '-u', trainer_filepath],
+        trainer = Popen([str(python_executable), '-u', str(trainer_filepath),
+                         str(args['use_gpu'])],
                         stdout=PIPE, stderr=PIPE)
         for output in trainer.stdout:
             emit('message', output.decode('utf-8'))

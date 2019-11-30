@@ -8,11 +8,13 @@ class Trainer:
     def train_once(self):
         self.progress_tracker.message('generating_data')
         train_X, train_y = self.train_data_getter()
-        test_X, test_y = self.test_data_getter()
 
         self.progress_tracker.reset()
         self.progress_tracker.message('training')
         train_loss = self.model.train(train_X, train_y)
+
+        self.progress_tracker.message('generating_data')
+        test_X, test_y = self.test_data_getter()
 
         self.progress_tracker.reset()
         self.progress_tracker.message('testing')
