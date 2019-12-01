@@ -1,4 +1,5 @@
 import numpy as np
+
 import cupy as cp
 
 from .gpu import CP
@@ -140,7 +141,7 @@ def check_model_gradient(model, X, y,
             loss = model.compute_loss_and_gradients(X, y)
             out_loss = loss['output_losses']
             reg_loss = loss['regularization_loss']
-            loss = CP.cp.sum(out_loss[0]) + reg_loss
+            loss = np.sum(out_loss) + reg_loss
             grad = param.grad
             return loss, grad
 

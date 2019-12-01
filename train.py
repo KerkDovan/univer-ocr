@@ -10,7 +10,7 @@ def main(use_gpu=False):
     client = socketIO.define(BaseNamespace, '/train-ws')
     init_emitter(client)
 
-    train_model(use_gpu == 'True')
+    train_model(use_gpu == 'True' or use_gpu is True)
 
 
 if __name__ == '__main__':

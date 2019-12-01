@@ -55,7 +55,7 @@ def check_model(model, X, y, delta=1e-5, tol=1e-4):
     return grad_check.check_model_gradient(model, X, y, delta=delta, tol=tol)
 
 
-def main(use_gpu):
+def main(use_gpu=False):
     if use_gpu:
         CP.use_gpu()
         print('Using GPU')
