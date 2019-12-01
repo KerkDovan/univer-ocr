@@ -54,6 +54,11 @@ class Convolutional2D(BaseLayerGPU):
         self._init_optimizer()
         self.is_initialized = True
 
+    def clear_memory(self):
+        for X in self._mem.items():
+            del X
+        self._mem = {}
+
     def _make_forward_cpu(self):
         def _forward_cpu(self, X, mem_id=0):
             batch_size, height, width, channels = X.shape
@@ -271,6 +276,7 @@ class Convolutional2D(BaseLayerGPU):
             db_total = CP.cp.sum(db_total, axis=(0, 1))
             self.w.grad += dw_total
             self.b.grad += db_total
+            del dw_total, db_total
 
             return dx_total
 

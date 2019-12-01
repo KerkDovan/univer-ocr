@@ -4,12 +4,17 @@ import numpy
 
 class CP:
     cp = numpy
-    use_gpu = False
+    is_gpu_used = False
 
     def use_cpu():
         CP.cp = numpy
-        CP.use_gpu = False
+        CP.is_gpu_used = False
 
     def use_gpu():
         CP.cp = cupy
-        CP.use_gpu = True
+        CP.is_gpu_used = True
+
+    def copy(obj):
+        if CP.is_gpu_used:
+            return cupy.asarray(obj)
+        return numpy.copy(obj)

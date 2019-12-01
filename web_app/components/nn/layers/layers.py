@@ -1,9 +1,7 @@
-import math
-
 import numpy as np
 
 from ..gpu import CP
-from ..help_func import make_list_if_not, tuplize
+from ..help_func import make_list_if_not
 from ..initializers import kaiming_uniform
 from ..optimizers import Adam
 from ..progress_tracker import BaseProgressTracker, track_this
@@ -152,7 +150,7 @@ class BaseLayerGPU(BaseLayer):
         assert self.is_initialized, 'You must initialize() layer before calling forward() method'
         inputs = make_list_if_not(inputs)
         result = []
-        _forward = self._forward_gpu if CP.use_gpu else self._forward_cpu
+        _forward = self._forward_gpu if CP.is_gpu_used else self._forward_cpu
         for mem_id, X in enumerate(inputs):
             result.append(_forward(self, X, mem_id))
         return result
@@ -161,11 +159,14 @@ class BaseLayerGPU(BaseLayer):
     def backward(self, grads):
         grads = make_list_if_not(grads)
         result = []
-        _backward = self._backward_gpu if CP.use_gpu else self._backward_cpu
+        _backward = self._backward_gpu if CP.is_gpu_used else self._backward_cpu
         for mem_id, grad in enumerate(grads):
             result.append(_backward(self, grad, mem_id))
         self.clear_memory()
         return result
+
+    def clear_memory(self):
+        raise NotImplementedError()
 
     def _make_forward_cpu():
         raise NotImplementedError()

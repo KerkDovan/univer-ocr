@@ -16,6 +16,11 @@ class MaxPool2D(BaseLayerGPU):
         self.ceil_mode = ceil_mode
         self._init_forward_backward()
 
+    def clear_memory(self):
+        for mask, input_shape in self._mem.items():
+            del mask, input_shape
+        self._mem = {}
+
     def _make_forward_cpu(self):
         def _forward_cpu(self, X, mem_id=0):
             batch_size, height, width, channels = X.shape

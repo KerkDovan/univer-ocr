@@ -65,7 +65,7 @@ def train_model(use_gpu):
         X = np.reshape(X, (1, *X.shape)) / 256
         y = np.reshape(y, (1, *y.shape)) / 256
 
-        return CP.cp.array(X), CP.cp.array(y)
+        return CP.copy(X), CP.copy(y)
 
     tracker = ProgressTracker(emit_status)
     tracker.reset()
@@ -94,9 +94,11 @@ def train_model(use_gpu):
 
     message(f'[{now()}] Starting training')
 
+    cnt = 0
     while True:
         ts = now()
         train_loss, test_loss = trainer.train_once()
         json.dump(unet.get_weights(), open(model_weights_file, 'w'))
-        message(f'[{now()}] Time required: {now() - ts}\n'
+        message(f'[{now()}] Time required: {now() - ts} #{cnt}\n'
                 f'  Train loss: {train_loss}\n  Test loss: {test_loss}')
+        cnt += 1
