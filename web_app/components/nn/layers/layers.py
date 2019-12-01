@@ -137,6 +137,49 @@ class BaseLayer:
         self.progress_tracker.register_layer(self.name)
 
 
+class BaseLayerGPU(BaseLayer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _init_forward_backward(self):
+        self._forward_cpu = self._make_forward_cpu()
+        self._backward_cpu = self._make_backward_cpu()
+        self._forward_gpu = self._make_forward_gpu()
+        self._backward_gpu = self._make_backward_gpu()
+
+    @track_this('forward')
+    def forward(self, inputs):
+        assert self.is_initialized, 'You must initialize() layer before calling forward() method'
+        inputs = make_list_if_not(inputs)
+        result = []
+        _forward = self._forward_gpu if CP.use_gpu else self._forward_cpu
+        for mem_id, X in enumerate(inputs):
+            result.append(_forward(self, X, mem_id))
+        return result
+
+    @track_this('backward')
+    def backward(self, grads):
+        grads = make_list_if_not(grads)
+        result = []
+        _backward = self._backward_gpu if CP.use_gpu else self._backward_cpu
+        for mem_id, grad in enumerate(grads):
+            result.append(_backward(self, grad, mem_id))
+        self.clear_memory()
+        return result
+
+    def _make_forward_cpu():
+        raise NotImplementedError()
+
+    def _make_backward_cpu():
+        raise NotImplementedError()
+
+    def _make_forward_gpu():
+        raise NotImplementedError()
+
+    def _make_backward_gpu():
+        raise NotImplementedError()
+
+
 class Concat(BaseLayer):
     def __init__(self, axis=-1, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -239,92 +282,6 @@ class FullyConnected(BaseLayer):
         return {'w': self.w}
 
 
-class MaxPool2D(BaseLayer):
-    def __init__(self, kernel_size, padding=0, stride=None, ceil_mode=False, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.kernel_size = tuplize('kernel_size', kernel_size, 2)
-        self.padding = tuplize('padding', padding, 2)
-        self.stride = self.kernel_size if stride is None else tuplize('stride', stride)
-        self.ceil_mode = ceil_mode
-
-    def _forward(self, X, mem_id=0):
-        batch_size, height, width, channels = X.shape
-
-        kh, kw = self.kernel_size
-        ph, pw = self.padding
-        sh, sw = self.stride
-
-        output_shape = self.get_output_shapes(X.shape)[0]
-        _, out_height, out_width, _ = output_shape
-
-        if ph != 0 or pw != 0:
-            nh, nw = height + 2 * ph, width + 2 * pw
-            padded = CP.cp.zeros((batch_size, nh, nw, channels))
-            padded[:, ph:nh - ph, pw:nw - pw, :] = X
-            X = padded
-
-        result = CP.cp.zeros(output_shape)
-        mask = CP.cp.zeros((batch_size, kh * out_height, kw * out_width, channels))
-
-        for y in range(out_height):
-            for x in range(out_width):
-                iy, ix = y * sh, x * sw
-                i = X[:, iy:iy + kh, ix:ix + kw, :]
-                max_el = CP.cp.max(i, axis=(1, 2))
-                max_el = CP.cp.reshape(max_el, (batch_size, 1, 1, channels))
-                submask = i == max_el
-                _, mh, mw, _ = submask.shape
-                my, mx = kh * y, kw * x
-                mask[:, my:my + mh, mx:mx + mw, :] = submask
-                result[:, y, x, :] += CP.cp.reshape(max_el, (batch_size, channels))
-
-        self._mem[mem_id] = mask, X.shape
-        return result
-
-    def _backward(self, grad, mem_id=0):
-        mask, input_shape = self._mem[mem_id]
-        batch_size, height, width, channels = input_shape
-        _, out_height, out_width, _ = grad.shape
-
-        kh, kw = self.kernel_size
-        ph, pw = self.padding
-        sh, sw = self.stride
-
-        result = CP.cp.zeros(input_shape)
-
-        for y in range(out_height):
-            for x in range(out_width):
-                ty, tx = sh * y, sw * x
-                my, mx = kh * y, kw * x
-                target = result[:, ty:ty + kh, tx:tx + kw, :]
-                _, th, tw, _ = target.shape
-                sub_shape = (batch_size, 1, 1, channels)
-                submask = mask[:, my:my + th, mx:mx + tw, :]
-                subgrad = CP.cp.reshape(grad[:, y, x, :], sub_shape)
-                subsum = CP.cp.reshape(CP.cp.sum(submask, axis=(1, 2)), sub_shape)
-                target += (subgrad / subsum) * submask
-
-        if ph != 0 or pw != 0:
-            result = result[:, ph:height - ph, pw:width - pw, :]
-
-        return result
-
-    def get_output_shapes(self, input_shapes):
-        input_shapes = make_list_if_not(input_shapes)
-        batch_size, height, width, channels = input_shapes[0]
-
-        kh, kw = self.kernel_size
-        ph, pw = self.padding
-        sh, sw = self.stride
-        ceil = math.ceil if self.ceil_mode else math.floor
-
-        out_height = ceil((height + 2 * ph - (kh - 1) - 1) / sh + 1)
-        out_width = ceil((width + 2 * pw - (kw - 1) - 1) / sw + 1)
-
-        return [(batch_size, out_height, out_width, channels)]
-
-
 class Noop(BaseLayer):
     def _forward(self, X, mem_id=0):
         return X
@@ -347,30 +304,3 @@ class Relu(BaseLayer):
 
     def get_output_shapes(self, input_shapes):
         return make_list_if_not(input_shapes)
-
-
-class Upsample2D(BaseLayer):
-    def __init__(self, scale_factor, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.scale_factor = tuplize('scale_factor', scale_factor, 2)
-
-    def _forward(self, X, mem_id=0):
-        self._mem[mem_id] = X.shape
-        return X.repeat(self.scale_factor[0], axis=1).repeat(self.scale_factor[1], axis=2)
-
-    def _backward(self, grad, mem_id=0):
-        batch_size, height, width, channels = grad.shape
-        sf_y, sf_x = self.scale_factor
-
-        result = CP.cp.zeros(self._mem[mem_id])
-        for y, gy in enumerate(range(0, height, sf_y)):
-            for x, gx in enumerate(range(0, width, sf_x)):
-                region = grad[:, gy:gy + sf_y, gx:gx + sf_x, :]
-                result[:, y, x, :] += CP.cp.sum(region, axis=(1, 2))
-
-        return result
-
-    def get_output_shapes(self, input_shapes):
-        input_shapes = make_list_if_not(input_shapes)
-        return [tuple((input_shapes[0][0],
-                       *(np.array(input_shapes[0][1:]) * (*self.scale_factor, 1))))]
