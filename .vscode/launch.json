@@ -15,7 +15,7 @@
             "name": "Test Neural Network - CPU",
             "type": "python",
             "request": "launch",
-            "program": "D:\\MyData\\Coding\\Python\\univer-ocr\\test_nn.py",
+            "program": "${workspaceRoot}/test_nn.py",
             "args": ["test_gradients"],
             "console": "integratedTerminal"
         },
@@ -23,7 +23,7 @@
             "name": "Test Neural Network - GPU",
             "type": "python",
             "request": "launch",
-            "program": "D:\\MyData\\Coding\\Python\\univer-ocr\\test_nn.py",
+            "program": "${workspaceRoot}/test_nn.py",
             "args": ["test_gradients", "True"],
             "console": "integratedTerminal"
         },
@@ -31,14 +31,14 @@
             "name": "Train Neural Network - CPU",
             "type": "python",
             "request": "launch",
-            "program": "D:\\MyData\\Coding\\Python\\univer-ocr\\train.py",
+            "program": "${workspaceRoot}/train.py",
             "console": "integratedTerminal"
         },
         {
             "name": "Train Neural Network - GPU",
             "type": "python",
             "request": "launch",
-            "program": "D:\\MyData\\Coding\\Python\\univer-ocr\\train.py",
+            "program": "${workspaceRoot}/train.py",
             "args": ["True"],
             "console": "integratedTerminal"
         }
