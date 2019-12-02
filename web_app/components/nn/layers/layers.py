@@ -75,6 +75,8 @@ class BaseLayer:
         raise NotImplementedError()
 
     def update_grads(self):
+        if not self.trainable:
+            return
         for param in self.params().values():
             param.update_grad()
 
@@ -100,13 +102,19 @@ class BaseLayer:
 
     def set_weights(self, weights):
         for name, param in self.params().items():
-            cur_weights = CP.cp.array(np.array(weights.get(name, None)))
-            if CP.cp.any(CP.cp.isnan(cur_weights)):
-                cur_weights = None
-                print(f'{self.name}/{name}: NaN found in loaded weights, skipping')
+            cur_weights = weights.get(name, None)
             if cur_weights is None:
                 continue
-            param.value = CP.cp.array(cur_weights)
+            cur_weights = np.array(cur_weights)
+            error = None
+            if np.any(np.isnan(cur_weights)):
+                error = 'NaN found in loaded weights'
+            elif cur_weights.shape != param.value.shape:
+                error = f'Shapes don`t match: {cur_weights.shape} != {param.value.shape}'
+            if error is not None:
+                print(f'{self.name}/{name}: {error}, skipping')
+                continue
+            param.value = CP.copy(cur_weights)
 
     def count_parameters(self, param=None):
         if param is not None:
@@ -302,6 +310,20 @@ class Relu(BaseLayer):
     def _backward(self, grad, mem_id=0):
         result = grad * self._mem[mem_id]
         return result
+
+    def get_output_shapes(self, input_shapes):
+        return make_list_if_not(input_shapes)
+
+
+class Sigmoid(BaseLayer):
+    def _forward(self, X, mem_id=0):
+        self._mem[mem_id] = X
+        return 1 / (1 + CP.cp.exp(-X))
+
+    def _backward(self, grad, mem_id=0):
+        X = self._mem[mem_id]
+        eX = CP.cp.exp(-X)
+        return grad * eX / (eX + 1) ** 2
 
     def get_output_shapes(self, input_shapes):
         return make_list_if_not(input_shapes)

@@ -62,8 +62,8 @@ def train_model(use_gpu):
                      if name != 'image'])
         y = np.moveaxis(y, 0, -1)
 
-        X = np.reshape(X, (1, *X.shape)) / 256
-        y = np.reshape(y, (1, *y.shape)) / 256
+        X = np.reshape(X, (1, *X.shape)) / 255
+        y = np.reshape(y, (1, *y.shape)) / 255
 
         return CP.copy(X), CP.copy(y)
 
@@ -94,7 +94,7 @@ def train_model(use_gpu):
 
     message(f'[{now()}] Starting training')
 
-    cnt = 0
+    cnt = 1
     while True:
         ts = now()
         train_loss, test_loss = trainer.train_once()

@@ -6,7 +6,7 @@ from pprint import pprint
 from .. import gradient_check as grad_check
 from ..gpu import CP
 from ..layers import (
-    Concat, Convolutional2D, Flatten, FullyConnected, MaxPool2D, Noop, Relu, Upsample2D)
+    Concat, Convolutional2D, Flatten, FullyConnected, MaxPool2D, Noop, Relu, Sigmoid, Upsample2D)
 from ..losses import (
     SegmentationDice2D, SegmentationJaccard2D, SigmoidCrossEntropy, SoftmaxCrossEntropy)
 from ..models import Model, Sequential
@@ -83,6 +83,10 @@ def main(use_gpu=False):
 
     print('L2 Regularization')
     check_gradient(L2(0.1), X_fc)
+
+    layer = Sigmoid()
+    print(f'Sigmoid Activation Function Layer')
+    check_layer(layer, X_fc)
 
     n_sizes = [4, 7, 5, 3]
     X = CP.cp.random.randn(batch_size, n_sizes[0])

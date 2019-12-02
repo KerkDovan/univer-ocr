@@ -213,9 +213,10 @@ class Model(BaseModel):
         return self.forward(X)
 
     def update_grads(self):
+        if not self.trainable:
+            return
         for layer in self.layers.values():
-            if layer.trainable:
-                layer.update_grads()
+            layer.update_grads()
 
     def clear_grads(self):
         for layer in self.layers.values():
@@ -269,7 +270,8 @@ class Model(BaseModel):
         return result
 
     def get_weights(self):
-        return {name: layer.get_weights() for name, layer in self.layers.items()}
+        all_weights = {name: layer.get_weights() for name, layer in self.layers.items()}
+        return {name: weights for name, weights in all_weights.items() if weights != {}}
 
     def set_weights(self, weights):
         for name, layer in self.layers.items():

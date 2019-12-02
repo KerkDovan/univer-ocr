@@ -1,4 +1,4 @@
-import numpy as np
+from .gpu import CP
 
 
 class BaseRegularizer:
@@ -14,13 +14,13 @@ class BaseRegularizer:
 
 class L1(BaseRegularizer):
     def __call__(self, weights):
-        loss = self.reg_strength * np.sum(np.abs(weights))
-        grad = self.reg_strength * np.sign(weights)
-        return loss, grad
+        loss = self.reg_strength * CP.cp.sum(CP.cp.abs(weights))
+        grad = self.reg_strength * CP.cp.sign(weights)
+        return float(loss), grad
 
 
 class L2(BaseRegularizer):
     def __call__(self, weights):
-        loss = self.reg_strength * np.sum(weights ** 2)
+        loss = self.reg_strength * CP.cp.sum(weights ** 2)
         grad = self.reg_strength * 2 * weights
-        return loss, grad
+        return float(loss), grad

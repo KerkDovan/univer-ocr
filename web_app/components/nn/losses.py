@@ -21,7 +21,7 @@ class SegmentationDice2D(BaseLoss):
 
         loss = CP.cp.sum(1 - 2 * numerator / denominator)
         grad = -2 * (ground_truth * denominator - numerator) / denominator ** 2
-        return loss, grad
+        return float(loss), grad
 
 
 class SegmentationJaccard2D(BaseLoss):
@@ -37,7 +37,7 @@ class SegmentationJaccard2D(BaseLoss):
 
         loss = CP.cp.sum(1 - numerator / denominator)
         grad = -(ground_truth * denominator - numerator * (1 - ground_truth)) / denominator ** 2
-        return loss, grad
+        return float(loss), grad
 
 
 class SigmoidCrossEntropy(BaseLoss):
@@ -52,7 +52,7 @@ class SigmoidCrossEntropy(BaseLoss):
         loss = -(CP.cp.sum((gt * CP.cp.log(pred)) + rev_gt * CP.cp.log(1 - pred))
                  ) / batch_size
         grad = ((gt * (pred - 1)) + rev_gt * pred) / batch_size
-        return loss, grad
+        return float(loss), grad
 
 
 class SoftmaxCrossEntropy(BaseLoss):
@@ -68,4 +68,4 @@ class SoftmaxCrossEntropy(BaseLoss):
         predicted = softmax(prediction)
         loss = -(CP.cp.sum(ground_truth * CP.cp.log(predicted))) / batch_size
         grad = (predicted - ground_truth) / batch_size
-        return loss, grad
+        return float(loss), grad
