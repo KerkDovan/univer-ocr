@@ -89,7 +89,8 @@ class Convolutional2D(BaseLayerGPU):
 
             for y in range(0, out_height):
                 for x in range(0, out_width):
-                    i = CP.cp.reshape(X[:, y:y + kh, x:x + kw, :], new_shape)
+                    in_y, in_x = y * sh, x * sw
+                    i = CP.cp.reshape(X[:, in_y:in_y + kh, in_x:in_x + kw, :], new_shape)
                     i = CP.cp.concatenate((i, bias_vec), axis=1)
                     res = CP.cp.dot(i, w)
                     result[:, y, x, :] = res
@@ -130,7 +131,7 @@ class Convolutional2D(BaseLayerGPU):
 
                     dx = CP.cp.dot(cur_grad, wt)
                     dx = CP.cp.reshape(dx, (batch_size, kh, kw, in_channels))
-                    dx_total[:, y:y + kh, x:x + kw, :] += dx
+                    dx_total[:, in_y:in_y + kh, in_x:in_x + kw, :] += dx
 
             db_total = dw_temp[-1, :]
             dw_total = CP.cp.reshape(CP.cp.delete(dw_temp, -1, axis=0), self.w.value.shape)
@@ -195,6 +196,7 @@ class Convolutional2D(BaseLayerGPU):
         kh, kw = self.kernel_size
         ph, pw = self.padding
         sh, sw = self.stride
+        padding_value = self.padding_value
 
         @cuda.jit(device=True)
         def _backward_gpu_kernel_dx_func(w, grad, dx_total, batch, y, x, out_ch):
@@ -220,14 +222,13 @@ class Convolutional2D(BaseLayerGPU):
             cur_grad = grad[batch, y, x, out_ch]
             for ky in range(kh):
                 cy = ty + ky
-                if not 0 <= cy < X.shape[1]:
-                    continue
                 for kx in range(kw):
                     cx = tx + kx
-                    if not 0 <= cx < X.shape[2]:
-                        continue
+                    is_out_of_bounds = False
+                    if not 0 <= cy < X.shape[1] or not 0 <= cx < X.shape[2]:
+                        is_out_of_bounds = True
                     for in_ch in range(X.shape[3]):
-                        cur_X = X[batch, cy, cx, in_ch]
+                        cur_X = padding_value if is_out_of_bounds else X[batch, cy, cx, in_ch]
                         dw = cur_grad * cur_X
                         dw_total[ky, kx, in_ch, out_ch] += dw
             db = cur_grad

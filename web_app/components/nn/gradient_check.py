@@ -97,6 +97,7 @@ def check_layer_param_gradient(layer, x,
     param = layer.params()[param_name]
     initial_w = param.value
 
+    layer.clear_grads()
     output = layer.forward(x)
     if isinstance(output, list):
         output = output[0]
@@ -104,6 +105,7 @@ def check_layer_param_gradient(layer, x,
 
     def helper_func(w):
         param.value = w
+        layer.clear_grads()
         output = layer.forward(x)
         if isinstance(output, list):
             output = output[0]

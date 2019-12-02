@@ -69,10 +69,10 @@ def main(use_gpu=False):
     X_fl = CP.cp.random.randn(batch_size, n_input, n_output)
 
     layer = FullyConnected(n_input, n_output)
-    print(f'Fully Connected Layer: {layer.count_parameters("w")} parameters')
+    print(f'Fully Connected Layer: {layer.count_parameters()} parameters')
     check_layer(layer, X_fc)
 
-    print('Fully Connected Layer - Param')
+    print('Fully Connected Layer - Param w')
     check_layer(FullyConnected(n_input, n_output), X_fc, 'w')
 
     print(f'Flatten Layer: {Flatten().count_parameters()} parameters')
@@ -124,21 +124,37 @@ def main(use_gpu=False):
     ks = (4, 4)
     X_conv2d = CP.cp.random.randn(batch_size, h, w, in_ch)
 
-    layer = Convolutional2D(ks, in_ch, out_ch)
-    print(f'Convolutional 2D Layer: {layer.count_parameters()} parameters')
-    check_layer(layer, X_conv2d)
+    def test_convolutional(label, layer, print_params_count=False):
+        if print_params_count:
+            print(f'{label}: {layer.count_parameters()} parameters')
+        else:
+            print(f'{label}')
+        check_layer(layer, X_conv2d)
+        print(f'{label} - Param w')
+        check_layer(layer, X_conv2d, 'w')
+        print(f'{label} - Param b')
+        check_layer(layer, X_conv2d, 'b')
 
-    print('Convolutional 2D Layer with Padding')
-    check_layer(Convolutional2D(ks, in_ch, out_ch, padding=1), X_conv2d)
+    test_convolutional(
+        'Convolutional 2D Layer',
+        Convolutional2D(ks, in_ch, out_ch),
+        True)
 
-    print('Convolutional 2D Layer with non-zero Padding')
-    check_layer(Convolutional2D(ks, in_ch, out_ch, padding=1, padding_value=0.5), X_conv2d)
+    test_convolutional(
+        'Convolutional 2D Layer with Padding',
+        Convolutional2D(ks, in_ch, out_ch, padding=1))
 
-    print('Convolutional 2D Layer with Stride')
-    check_layer(Convolutional2D(ks, in_ch, out_ch, stride=2), X_conv2d)
+    test_convolutional(
+        'Convolutional 2D Layer with non-zero Padding',
+        Convolutional2D(ks, in_ch, out_ch, padding=1, padding_value=0.5))
 
-    print('Convolutional 2D Layer with Padding and Stride')
-    check_layer(Convolutional2D(ks, in_ch, out_ch, padding=1, stride=2), X_conv2d)
+    test_convolutional(
+        'Convolutional 2D Layer with Stride',
+        Convolutional2D(ks, in_ch, out_ch, stride=2))
+
+    test_convolutional(
+        'Convolutional 2D Layer with Padding and Stride',
+        Convolutional2D(ks, in_ch, out_ch, padding=1, stride=2))
 
     print('Max Pooling 2D Layer')
     X_maxpool2d = CP.cp.reshape(CP.cp.array([
