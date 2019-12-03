@@ -221,6 +221,7 @@ class Model(BaseModel):
     def clear_grads(self):
         for layer in self.layers.values():
             layer.clear_grads()
+        self.input_grads = {}
 
     def get_all_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)

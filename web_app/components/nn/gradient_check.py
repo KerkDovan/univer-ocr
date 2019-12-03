@@ -17,8 +17,10 @@ def check_gradient(f, x, delta=1e-5, tol=1e-4):
     Return:
         bool indicating whether gradients match or not
     """
-    assert isinstance(x, CP.cp.ndarray)
-    assert x.dtype == CP.cp.float
+    assert isinstance(x, CP.cp.ndarray), (
+        f'{CP.cp.ndarray.__name__} expected, {type(x).__name__} found')
+    assert x.dtype == CP.cp.float, (
+        f'{CP.cp.float.__name__} expected, {x.dtype.__name__}')
 
     fx, analytic_grad = f(x)
     if isinstance(analytic_grad, list):
@@ -40,11 +42,11 @@ def check_gradient(f, x, delta=1e-5, tol=1e-4):
         numeric_grad_at_ix = (a - b) / (2 * delta)
 
         if not CP.cp.isclose(numeric_grad_at_ix, analytic_grad_at_ix, tol).all():
-            print(f"Gradients are different at {ix}.\n"
-                  f"  Analytic: {analytic_grad_at_ix},\n"
-                  f"  Numeric: {numeric_grad_at_ix},\n"
-                  f"  diff: {abs(analytic_grad_at_ix - numeric_grad_at_ix)},\n"
-                  f"  ratio: {analytic_grad_at_ix / numeric_grad_at_ix}")
+            print(f'Gradients are different at {ix}.\n'
+                  f'  Analytic: {analytic_grad_at_ix},\n'
+                  f'  Numeric: {numeric_grad_at_ix},\n'
+                  f'  diff: {abs(analytic_grad_at_ix - numeric_grad_at_ix)},\n'
+                  f'  ratio: {analytic_grad_at_ix / numeric_grad_at_ix}')
             return False
 
         it.iternext()
@@ -119,7 +121,8 @@ def check_layer_param_gradient(layer, x,
 
 
 def check_model_gradient(model, X, y,
-                         delta=1e-5, tol=1e-4):
+                         delta=1e-5, tol=1e-4,
+                         check_inputs=False):
     """
     Checks gradient correctness for all model parameters
     Arguments:
@@ -131,10 +134,35 @@ def check_model_gradient(model, X, y,
     Returns:
         bool indicating whether gradients match or not
     """
+
+    if not isinstance(X, list):
+        X = [X]
+
+    if check_inputs:
+        for input_key in range(len(X)):
+            print(f'Checking gradient for model input #{input_key}')
+
+            def helper_func(x):
+                this_X = [CP.cp.copy(tX) for tX in X]
+                this_X[input_key] += x
+                loss = model.compute_loss_and_gradients(this_X, y)
+                out_loss = loss['output_losses']
+                reg_loss = loss['regularization_loss']
+                loss = np.sum(out_loss) + reg_loss
+                input_grads = model.input_grads[input_key]
+                if isinstance(input_grads, list):
+                    input_grads = input_grads[0]
+                return loss, input_grads
+
+            zero_X = CP.cp.zeros_like(X[input_key])
+
+            if not check_gradient(helper_func, zero_X, delta, tol):
+                return False
+
     params = model.params()
 
     for param_key in params:
-        print("Checking gradient for %s" % param_key)
+        print(f'Checking gradient for {param_key}')
         param = params[param_key]
         initial_w = param.value
 

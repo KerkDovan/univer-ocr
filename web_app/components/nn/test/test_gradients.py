@@ -51,8 +51,9 @@ def check_layer(layer, X, param=None, delta=1e-5, tol=1e-4):
 
 
 @time_it
-def check_model(model, X, y, delta=1e-5, tol=1e-4):
-    return grad_check.check_model_gradient(model, X, y, delta=delta, tol=tol)
+def check_model(model, X, y, delta=1e-5, tol=1e-4, check_inputs=False):
+    return grad_check.check_model_gradient(
+        model, X, y, delta=delta, tol=tol, check_inputs=check_inputs)
 
 
 def main(use_gpu=False):
@@ -104,20 +105,20 @@ def main(use_gpu=False):
     y = CP.cp.zeros((batch_size, n_sizes[-1]))
     for batch in range(batch_size):
         y[batch, CP.cp.random.randint(n_sizes[-1])] = 1
-    check_model(model, X, y)
+    check_model(model, X, y, check_inputs=True)
 
     print('Sequential model with Softmax CE Loss and regularization', regularizers)
     model = Sequential(layers_reg, loss=SoftmaxCrossEntropy())
-    check_model(model, X, y)
+    check_model(model, X, y, check_inputs=True)
 
     print('Sequential model with Sigmoid CE Loss')
     y = CP.cp.array(CP.cp.random.choice([0, 1], size=(batch_size, n_sizes[-1])))
     model = Sequential(layers, loss=SigmoidCrossEntropy())
-    check_model(model, X, y)
+    check_model(model, X, y, check_inputs=True)
 
     print('Sequential model with Sigmoid CE Loss and regularization', regularizers)
     model = Sequential(layers_reg, loss=SigmoidCrossEntropy())
-    check_model(model, X, y)
+    check_model(model, X, y, check_inputs=True)
 
     in_ch, out_ch = 6, 7
     h, w = 5, 5
@@ -190,16 +191,17 @@ def main(use_gpu=False):
         Noop(),
         Relu(),
         Convolutional2D((2, 2), 4, gt_dice.shape[-1], padding=1),
+        Sigmoid(),
     ]
 
     print(f'Sequential FCN with Segmentation Dice 2D Loss')
     model = Sequential(layers, loss=SegmentationDice2D())
     model.initialize_from_X(X_dice)
-    check_model(model, X_dice, gt_dice)
+    check_model(model, X_dice, gt_dice, check_inputs=True)
 
     print(f'Sequential FCN with Segmentation Jaccard 2D Loss')
     model = Sequential(layers, loss=SegmentationJaccard2D())
-    check_model(model, X_dice, gt_dice)
+    check_model(model, X_dice, gt_dice, check_inputs=True)
 
     print(f'Concat Layer')
     concat = Concat()
@@ -212,7 +214,7 @@ def main(use_gpu=False):
 
     batch_size = 5
     in_size, out_size = 1, 3
-    in_cnt, out_cnt = 1, 2
+    in_cnt, out_cnt = 3, 2
     in_shape = (batch_size, 5, 5, in_size)
     out_shape = (batch_size, out_size)
     X = [CP.cp.random.randn(*in_shape) for _ in range(in_cnt)]
@@ -220,6 +222,7 @@ def main(use_gpu=False):
     layers = {
         'conv1': Convolutional2D((2, 2), out_channels=out_size),
         'conv2': Convolutional2D((2, 2), out_channels=out_size),
+        'conv3': Convolutional2D((2, 2), out_channels=out_size),
         'concat': Concat(),
         'pool': MaxPool2D(2),
         'flatten': Flatten(),
@@ -228,8 +231,9 @@ def main(use_gpu=False):
     }
     relations = {
         'conv1': 0,
-        'conv2': 0,
-        'concat': ['conv1', 'conv2'],
+        'conv2': 1,
+        'conv3': 2,
+        'concat': ['conv1', 'conv2', 'conv3'],
         'pool': 'concat',
         'flatten': 'pool',
         'dense1': 'flatten',
@@ -240,8 +244,9 @@ def main(use_gpu=False):
     model = Model(layers, relations, loss=SigmoidCrossEntropy())
     model.initialize_from_X(X)
     pprint(model.get_all_output_shapes([x.shape for x in X]))
-    print(f'Small non-sequential model: {model.count_parameters()} parameters')
-    check_model(model, X, y)
+    print(f'Small non-sequential model with multiple inputs and outputs: '
+          f'{model.count_parameters()} parameters')
+    check_model(model, X, y, check_inputs=True)
 
     batch_size = 3
     in_channels, out_channels = 3, 3
