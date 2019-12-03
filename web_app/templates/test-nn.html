@@ -50,7 +50,7 @@
 window.onload = function() {
   let socket = io.connect("ws://127.0.0.1/test-nn-ws");
   socket.on('message', function(message) {
-    $("#messages").append(message);
+    $("#messages").append(escapeHtml(message));
     document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
   });
 

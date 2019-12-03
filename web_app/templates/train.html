@@ -74,7 +74,7 @@ function make_status_row(name, safe_name) {
 
 window.onload = function() {
   function append_message(message) {
-    $("#messages").append(message);
+    $("#messages").append(escapeHtml(message));
     document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
   }
   function reset_step() {
