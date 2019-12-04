@@ -66,8 +66,9 @@ class Upsample2D(BaseLayerGPU):
             self._mem[mem_id] = X.shape
             output_shape = self.get_output_shapes(X.shape)[0]
             result = CP.cp.zeros(output_shape)
-            grid_dim, block_dim = (32, 32), (8, 8)
+            grid_dim, block_dim = self.get_kernel_dims(result, (1, 2))
             _forward_gpu_kernel[grid_dim, block_dim](X, result)
+            cuda.synchronize()
             return result
 
         return _forward_gpu
@@ -99,8 +100,9 @@ class Upsample2D(BaseLayerGPU):
         def _backward_gpu(self, grad, mem_id=0):
             input_shape = self._mem[mem_id]
             dx_total = CP.cp.zeros(input_shape)
-            grid_dim, block_dim = (32, 32), (8, 8)
+            grid_dim, block_dim = self.get_kernel_dims(grad, (1, 2))
             _backward_gpu_kernel[grid_dim, block_dim](grad, dx_total)
+            cuda.synchronize()
             return dx_total
 
         return _backward_gpu

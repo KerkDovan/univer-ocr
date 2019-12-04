@@ -185,9 +185,10 @@ class Convolutional2D(BaseLayerGPU):
             self._mem[mem_id] = X
             output_shape = self.get_output_shapes(X.shape)[0]
             result = CP.cp.zeros(output_shape)
-            grid_dim, block_dim = (32, 32), (8, 8)
+            grid_dim, block_dim = self.get_kernel_dims(result, (1, 2))
             _forward_gpu_kernel[grid_dim, block_dim](
                 X, self.w.value, self.b.value, result)
+            cuda.synchronize()
             return result
 
         return _forward_gpu
@@ -263,7 +264,7 @@ class Convolutional2D(BaseLayerGPU):
         def _backward_gpu(self, grad, mem_id=0):
             X = self._mem[mem_id]
 
-            grid_dim, block_dim = (32, 32), (8, 8)
+            grid_dim, block_dim = self.get_kernel_dims(grad, (1, 2))
             dx_total = CP.cp.zeros_like(X)
             _backward_gpu_kernel_dx[grid_dim, block_dim](self.w.value, grad, dx_total)
 
@@ -272,6 +273,7 @@ class Convolutional2D(BaseLayerGPU):
             dw_total = CP.cp.zeros((*gridsize, *self.w.value.shape))
             db_total = CP.cp.zeros((*gridsize, *self.b.value.shape))
             _backward_gpu_kernel_dw_db[grid_dim, block_dim](X, grad, dw_total, db_total)
+            cuda.synchronize()
 
             dw_total = CP.cp.sum(dw_total, axis=(0, 1))
             db_total = CP.cp.sum(db_total, axis=(0, 1))

@@ -142,8 +142,9 @@ class MaxPool2D(BaseLayerGPU):
             mask_shape = (batch_size, kh * out_height, kw * out_width, channels)
             result = CP.cp.zeros(output_shape)
             mask = CP.cp.zeros(mask_shape, dtype=CP.cp.bool)
-            grid_dim, block_dim = (32, 32), (8, 8)
+            grid_dim, block_dim = self.get_kernel_dims(result, (1, 2))
             _forward_gpu_kernel[grid_dim, block_dim](X, result, mask)
+            cuda.synchronize()
             self._mem[mem_id] = mask, X.shape
             return result
 
@@ -196,9 +197,10 @@ class MaxPool2D(BaseLayerGPU):
 
         def _backward_gpu(self, grad, mem_id=0):
             mask, input_shape = self._mem[mem_id]
-            grid_dim, block_dim = (32, 32), (8, 8)
+            grid_dim, block_dim = self.get_kernel_dims(grad, (1, 2))
             dx_total = CP.cp.zeros(input_shape)
             _backward_gpu_kernel[grid_dim, block_dim](grad, dx_total, mask)
+            cuda.synchronize()
             return dx_total
 
         return _backward_gpu

@@ -173,6 +173,14 @@ class BaseLayerGPU(BaseLayer):
         self.clear_memory()
         return result
 
+    def get_kernel_dims(self, array, axis):
+        if isinstance(axis, int):
+            axis = [axis]
+        block_dim = tuple(16 for _ in range(len(axis)))
+        grid_dim = tuple(int(np.ceil(array.shape[axis[i]] / block_dim[i]))
+                         for i in range(len(axis)))
+        return grid_dim, block_dim
+
     def clear_memory(self):
         raise NotImplementedError()
 
