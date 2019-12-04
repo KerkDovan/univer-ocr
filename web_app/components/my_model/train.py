@@ -24,11 +24,16 @@ def init_emitter(new_emitter):
 
 
 def emit(message_type, obj):
+    if emitter is None:
+        return
     emitter.emit(message_type, obj)
 
 
 def message(*message, sep=' ', end='\n'):
     text = sep.join(str(x) for x in message) + end
+    if emitter is None:
+        print(text)
+        return
     emit('message', text)
 
 
@@ -45,7 +50,7 @@ def emit_status(status):
     emit('progress_tracker', status)
 
 
-def train_model(use_gpu):
+def train_model(use_gpu=False):
     if use_gpu:
         CP.use_gpu()
         print('Using GPU')
