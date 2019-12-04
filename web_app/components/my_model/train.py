@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from pprint import pformat
 
+import numba
 import numpy as np
 
 from ..image_generator.generate import LayeredImage, generate_train_data
@@ -54,6 +55,25 @@ def train_model(use_gpu=False):
     if use_gpu:
         CP.use_gpu()
         print('Using GPU')
+        gpu = numba.cuda.get_current_device()
+        print(
+            f'name = {gpu.name}\n'
+            f'maxThreadsPerBlock = {gpu.MAX_THREADS_PER_BLOCK}\n'
+            f'maxBlockDimX = {gpu.MAX_BLOCK_DIM_X}\n'
+            f'maxBlockDimY = {gpu.MAX_BLOCK_DIM_Y}\n'
+            f'maxBlockDimZ = {gpu.MAX_BLOCK_DIM_Z}\n'
+            f'maxGridDimX = {gpu.MAX_GRID_DIM_X}\n'
+            f'maxGridDimY = {gpu.MAX_GRID_DIM_Y}\n'
+            f'maxGridDimZ = {gpu.MAX_GRID_DIM_Z}\n'
+            f'maxSharedMemoryPerBlock = {gpu.MAX_SHARED_MEMORY_PER_BLOCK}\n'
+            f'asyncEngineCount = {gpu.ASYNC_ENGINE_COUNT}\n'
+            f'canMapHostMemory = {gpu.CAN_MAP_HOST_MEMORY}\n'
+            f'multiProcessorCount = {gpu.MULTIPROCESSOR_COUNT}\n'
+            f'warpSize = {gpu.WARP_SIZE}\n'
+            f'unifiedAddressing = {gpu.UNIFIED_ADDRESSING}\n'
+            f'pciBusID = {gpu.PCI_BUS_ID}\n'
+            f'pciDeviceID = {gpu.PCI_DEVICE_ID}\n'
+        )
     else:
         CP.use_cpu()
         print('Using CPU')
