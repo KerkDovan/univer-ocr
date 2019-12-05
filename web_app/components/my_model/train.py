@@ -4,13 +4,12 @@ from pathlib import Path
 from pprint import pformat
 
 import numba
-import numpy as np
 
-from ..image_generator.generate import LayeredImage, generate_train_data
 from ..nn.gpu import CP
 from ..nn.progress_tracker import ProgressTracker
 from ..nn.trainer import Trainer
 from .model import make_unet
+from .train_data import DataGenerator
 
 emitter = None
 
@@ -78,22 +77,15 @@ def train_model(use_gpu=False):
         CP.use_cpu()
         print('Using CPU')
 
-    def generate_data():
-        picture = generate_train_data(640, 480)
-        layer_names = LayeredImage.layer_names
-        X = np.array(picture['image'])
-        y = np.array([np.array(picture[name])
-                     for name in layer_names
-                     if name != 'image'])
-        y = np.moveaxis(y, 0, -1)
-
-        X = np.reshape(X, (1, *X.shape)) / 255
-        y = np.reshape(y, (1, *y.shape)) / 255
-
-        return CP.copy(X), CP.copy(y)
-
     tracker = ProgressTracker(emit_status)
     tracker.reset()
+
+    data_generator = DataGenerator(width=16 * 40, height=16 * 30, queue_size=3)
+    data_generator.start()
+
+    def generate_data():
+        X, y = data_generator.get_data()
+        return CP.copy(X), CP.copy(y)
 
     X, y = generate_data()
     input_shape, output_shape = X.shape, y.shape
@@ -107,23 +99,22 @@ def train_model(use_gpu=False):
         print('No model_weights.json file found')
         weights = {}
 
-    unet = make_unet(output_shape[3])
-    unet.initialize(input_shape)
-    unet.init_progress_tracker(tracker)
-    unet.set_weights(weights)
+    model = make_unet(output_shape[3])
+    model.initialize(input_shape)
+    model.init_progress_tracker(tracker)
+    model.set_weights(weights)
 
-    message(pformat(unet.get_all_output_shapes(input_shape)))
-    message(f'Count of parameters: {unet.count_parameters()}')
+    message(pformat(model.get_all_output_shapes(input_shape)))
+    message(f'Count of parameters: {model.count_parameters()}')
 
-    trainer = Trainer(unet, generate_data, generate_data, tracker)
+    trainer = Trainer(model, generate_data, generate_data, tracker)
 
     message(f'[{now()}] Starting training')
 
     cnt = 1
     while True:
         ts = now()
-        train_loss, test_loss = trainer.train_once()
-        json.dump(unet.get_weights(), open(model_weights_file, 'w'))
-        message(f'[{now()}] Time required: {now() - ts} #{cnt}\n'
-                f'  Train loss: {train_loss}\n  Test loss: {test_loss}')
+        train_loss, test_loss = trainer.train_once(num_epochs=100)
+        json.dump(model.get_weights(), open(model_weights_file, 'w'))
+        message(f'[{now()}] Time required: {now() - ts} #{cnt}\n\n')
         cnt += 1

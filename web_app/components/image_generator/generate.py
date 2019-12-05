@@ -220,16 +220,16 @@ class LayeredImage:
         self.mask = np.array(self.layers['paragraph'])
 
 
-def random_font():
+def random_font(min_size=12, max_size=48):
     style = random.choice(['normal', 'bold', 'italic', 'bold_italic'])
     font = None
     while font is None:
         font = getattr(random.choice(FONTS_LIST), style)
-        font = font(size=random.randint(12, 48))
+        font = font(size=random.randint(min_size, max_size))
     return font
 
 
-def random_text():
+def random_text(min_wrap=30, max_wrap=100):
     if np.random.choice([True, False], p=[0.1, 0.9]):
         text = ' '.join(
             ''.join(random.choice(CHARS) for i in range(random.randint(1, 10)))
@@ -237,7 +237,7 @@ def random_text():
     else:
         fake = Faker(random.choice(['la', 'en_US', 'ru_RU']))
         text = fake.paragraph(nb_sentences=random.randint(3, 10))
-    return wrap(text, random.randint(30, 100))
+    return wrap(text, random.randint(min_wrap, max_wrap))
 
 
 def generate_demo(width, height):
@@ -245,12 +245,3 @@ def generate_demo(width, height):
     for _ in range(30):
         layers.add_paragraph(random_text(), random_font())
     return layers.get_raw(), layers.get_demo()
-
-
-def generate_train_data(width, height):
-    bg_color = (*np.random.randint(256, size=(3,)), 255)
-    layers = LayeredImage(width, height, bg_color)
-    for i in range(30):
-        # print(i, end=' ')
-        layers.add_paragraph(random_text(), random_font())
-    return layers.get_raw()

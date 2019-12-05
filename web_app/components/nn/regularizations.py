@@ -3,7 +3,7 @@ from .gpu import CP
 
 class BaseRegularizer:
     def __init__(self, reg_strength):
-        self.reg_strength = float(reg_strength)
+        self.reg_strength = CP.cp.float(reg_strength)
 
     def __call__(self, weights):
         raise NotImplementedError()
