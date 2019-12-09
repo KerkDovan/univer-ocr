@@ -6,7 +6,8 @@ from pprint import pprint
 from .. import gradient_check as grad_check
 from ..gpu import CP
 from ..layers import (
-    Concat, Convolutional2D, Flatten, FullyConnected, MaxPool2D, Noop, Relu, Sigmoid, Upsample2D)
+    Concat, Convolutional2D, Flatten, FullyConnected, LeakyRelu, MaxPool2D, Noop, Relu, Sigmoid,
+    Upsample2D)
 from ..losses import (
     SegmentationDice2D, SegmentationJaccard2D, SigmoidCrossEntropy, SoftmaxCrossEntropy)
 from ..models import Model, Sequential
@@ -78,6 +79,12 @@ def main(use_gpu=False):
 
     print(f'Flatten Layer: {Flatten().count_parameters()} parameters')
     check_layer(Flatten(), X_fl)
+
+    print('ReLU Layer')
+    check_layer(Relu(), X_fl)
+
+    print('Leaky ReLU Layer')
+    check_layer(LeakyRelu(), X_fl)
 
     print('L1 Regularization')
     check_gradient(L1(0.1), X_fc)

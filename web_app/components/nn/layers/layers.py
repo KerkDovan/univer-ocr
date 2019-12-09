@@ -323,6 +323,23 @@ class Relu(BaseLayer):
         return make_list_if_not(input_shapes)
 
 
+class LeakyRelu(BaseLayer):
+    def __init__(self, alpha=0.01, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.alpha = alpha
+
+    def _forward(self, X, mem_id=0):
+        self._mem[mem_id] = (X >= 0) + self.alpha * (X < 0)
+        return X * self._mem[mem_id]
+
+    def _backward(self, grad, mem_id=0):
+        result = grad * self._mem[mem_id]
+        return result
+
+    def get_output_shapes(self, input_shapes):
+        return make_list_if_not(input_shapes)
+
+
 class Sigmoid(BaseLayer):
     def _forward(self, X, mem_id=0):
         self._mem[mem_id] = X
