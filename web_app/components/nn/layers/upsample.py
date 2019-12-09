@@ -52,9 +52,9 @@ class Upsample2D(BaseLayerGPU):
 
         @cuda.jit
         def _forward_gpu_kernel(X, result):
-            startY, startX = cuda.grid(2)
-            gridY = cuda.gridDim.y * cuda.blockDim.y
+            startX, startY = cuda.grid(2)
             gridX = cuda.gridDim.x * cuda.blockDim.x
+            gridY = cuda.gridDim.y * cuda.blockDim.y
             for y in range(startY, X.shape[1], gridY):
                 for x in range(startX, X.shape[2], gridX):
                     for batch in range(X.shape[0]):
@@ -87,9 +87,9 @@ class Upsample2D(BaseLayerGPU):
 
         @cuda.jit
         def _backward_gpu_kernel(grad, dx_total):
-            startY, startX = cuda.grid(2)
-            gridY = cuda.gridDim.y * cuda.blockDim.y
+            startX, startY = cuda.grid(2)
             gridX = cuda.gridDim.x * cuda.blockDim.x
+            gridY = cuda.gridDim.y * cuda.blockDim.y
             for y in range(startY, dx_total.shape[1], gridY):
                 for x in range(startX, dx_total.shape[2], gridX):
                     for batch in range(dx_total.shape[0]):

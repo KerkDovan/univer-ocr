@@ -12,7 +12,7 @@ class MaxPool2D(BaseLayerGPU):
         super().__init__(*args, **kwargs)
         self.kernel_size = tuplize('kernel_size', kernel_size, 2)
         self.padding = tuplize('padding', padding, 2)
-        self.stride = self.kernel_size if stride is None else tuplize('stride', stride)
+        self.stride = self.kernel_size if stride is None else tuplize('stride', stride, 2)
         self.ceil_mode = ceil_mode
         self._init_forward_backward()
 
@@ -100,13 +100,12 @@ class MaxPool2D(BaseLayerGPU):
             max_val = None
             for ky in range(kh):
                 cy = ty + ky
-                if not 0 <= cy < X.shape[1]:
-                    continue
                 for kx in range(kw):
                     cx = tx + kx
-                    if not 0 <= cx < X.shape[2]:
-                        continue
-                    cur_val = X[batch, cy, cx, channel]
+                    if 0 <= cy < X.shape[1] and 0 <= cx < X.shape[2]:
+                        cur_val = X[batch, cy, cx, channel]
+                    else:
+                        cur_val = 0
                     if max_val is None or max_val < cur_val:
                         max_val = cur_val
             if max_val is None:
@@ -126,9 +125,9 @@ class MaxPool2D(BaseLayerGPU):
 
         @cuda.jit
         def _forward_gpu_kernel(X, result, mask):
-            startY, startX = cuda.grid(2)
-            gridY = cuda.gridDim.y * cuda.blockDim.y
+            startX, startY = cuda.grid(2)
             gridX = cuda.gridDim.x * cuda.blockDim.x
+            gridY = cuda.gridDim.y * cuda.blockDim.y
             for y in range(startY, result.shape[1], gridY):
                 for x in range(startX, result.shape[2], gridX):
                     for batch in range(result.shape[0]):
@@ -157,48 +156,43 @@ class MaxPool2D(BaseLayerGPU):
 
         @cuda.jit(device=True)
         def _backward_gpu_kernel_func(grad, dx_total, mask, batch, y, x, channel):
-            ty, tx = y * sh - ph, x * sw - pw
-            my, mx = y * kh, x * kw
-            cnt = 0
             for ky in range(kh):
-                cy = ty + ky
-                if not 0 <= cy < dx_total.shape[1]:
+                ty = y - ky
+                gy = (ty + ph) // sh
+                if gy * sh - ph != ty or not 0 <= gy < grad.shape[1]:
                     continue
+                my = gy * kh
                 for kx in range(kw):
-                    cx = tx + kx
-                    if not 0 <= cx < dx_total.shape[2]:
+                    tx = x - kx
+                    gx = (tx + pw) // sw
+                    if gx * sw - pw != tx or not 0 <= gx < grad.shape[2]:
                         continue
-                    cnt += mask[batch, my + ky, mx + kx, channel] is True
-            if cnt == 0:
-                return
-            for ky in range(kh):
-                cy = ty + ky
-                if not 0 <= cy < dx_total.shape[1]:
-                    continue
-                for kx in range(kw):
-                    cx = tx + kx
-                    if not 0 <= cx < dx_total.shape[2]:
+                    mx = gx * kw
+                    if mask[batch, my + ky, mx + kx, channel] is False:
                         continue
-                    cur_grad = grad[batch, y, x, channel] / cnt
-                    if mask[batch, my + ky, mx + kx, channel] is True:
-                        dx_total[batch, cy, cx, channel] += cur_grad
+                    cnt = 0
+                    for tky in range(kh):
+                        for tkx in range(kw):
+                            cnt += mask[batch, my + tky, mx + tkx, channel] is True
+                    cur_grad = grad[batch, gy, gx, channel] / cnt
+                    dx_total[batch, y, x, channel] += cur_grad
 
         @cuda.jit
         def _backward_gpu_kernel(grad, dx_total, mask):
-            startY, startX = cuda.grid(2)
-            gridY = cuda.gridDim.y * cuda.blockDim.y
+            startX, startY = cuda.grid(2)
             gridX = cuda.gridDim.x * cuda.blockDim.x
-            for y in range(startY, grad.shape[1], gridY):
-                for x in range(startX, grad.shape[2], gridX):
-                    for batch in range(grad.shape[0]):
-                        for out_ch in range(grad.shape[3]):
+            gridY = cuda.gridDim.y * cuda.blockDim.y
+            for y in range(startY, dx_total.shape[1], gridY):
+                for x in range(startX, dx_total.shape[2], gridX):
+                    for batch in range(dx_total.shape[0]):
+                        for out_ch in range(dx_total.shape[3]):
                             _backward_gpu_kernel_func(
                                 grad, dx_total, mask, batch, y, x, out_ch)
 
         def _backward_gpu(self, grad, mem_id=0):
             mask, input_shape = self._mem[mem_id]
-            grid_dim, block_dim = self.get_kernel_dims(grad, (1, 2))
             dx_total = CP.cp.zeros(input_shape)
+            grid_dim, block_dim = self.get_kernel_dims(dx_total, (1, 2))
             _backward_gpu_kernel[grid_dim, block_dim](grad, dx_total, mask)
             cuda.synchronize()
             return dx_total

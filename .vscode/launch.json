@@ -12,7 +12,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Test Neural Network - CPU",
+            "name": "Test Neural Network Gradients - CPU",
             "type": "python",
             "request": "launch",
             "program": "${workspaceRoot}/test_nn.py",
@@ -20,11 +20,19 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Test Neural Network - GPU",
+            "name": "Test Neural Network Gradients - GPU",
             "type": "python",
             "request": "launch",
             "program": "${workspaceRoot}/test_nn.py",
             "args": ["test_gradients", "True"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Test Neural Network CPU-GPU Identity",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/test_nn.py",
+            "args": ["test_identity"],
             "console": "integratedTerminal"
         },
         {

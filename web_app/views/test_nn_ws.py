@@ -9,6 +9,7 @@ python_executable = Path('.venv', 'Scripts', 'python.exe')
 tester_filepath = Path('test_nn.py')
 test_scripts = {
     'test_gradients': 'Test gradients',
+    'test_identity': 'Test CPU-GPU identity',
 }
 tester = None
 
