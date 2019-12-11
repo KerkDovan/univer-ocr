@@ -18,3 +18,8 @@ class CP:
         if CP.is_gpu_used:
             return cupy.asarray(obj)
         return numpy.copy(obj)
+
+    def asnumpy(obj):
+        if CP.is_gpu_used:
+            return cupy.asnumpy(obj)
+        return numpy.asarray(obj)
