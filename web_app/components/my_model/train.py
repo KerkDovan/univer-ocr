@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from pprint import pformat
 
 import numba
@@ -7,6 +6,7 @@ import numba
 from ..nn.gpu import CP
 from ..nn.optimizers import Adam
 from ..nn.progress_tracker import ProgressTracker
+from .constants import MODEL_WEIGHTS_FILE_PATH, TRAIN_PROGRESS_PATH
 from .datasets import (
     RandomSelectDataset, decode_X, decode_y, save_pictures, train_dataset, validation_dataset)
 from .model import make_unet
@@ -77,8 +77,8 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
     tracker = ProgressTracker(emit_status)
     tracker.reset()
 
-    model_weights_file = Path('web_app', 'components', 'my_model', 'model_weights.json')
-    train_progress_path = Path('web_app', 'components', 'my_model', 'train_progress')
+    model_weights_file = MODEL_WEIGHTS_FILE_PATH
+    train_progress_path = TRAIN_PROGRESS_PATH
 
     try:
         weights = json.load(open(model_weights_file, 'r'))

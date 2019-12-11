@@ -86,7 +86,7 @@ To run any scripts in this project you should either activate `virtualenv` (see 
     python run generate_data
     ```
 
-    It will create directory `web_app/components/my_model/data`.
+    It will create directory `generated_files/data`.
 
 3. To train the model run this command:
 
@@ -102,6 +102,6 @@ To run any scripts in this project you should either activate `virtualenv` (see 
 
     - `show_progress_bar`: may be `True` or `False`. If `True`, displays progress bar for each epoch. Handy when running in console mode, but dramatically increases number of lines in log file, if you redirect output from console to file. Default is `False`.
 
-    - `save_train_progress`: may be `True` or `False`. If `True`, saves **all** input and output pictures of **each** iteration of **each** epoch while training. This can help you visualize training process, but be very careful because it is extremely memory-consuming operation and may fill up your hard drive in no time. Saved pictures are located at `web_app/components/my_model/train_progress`. Default is `False`.
+    - `save_train_progress`: may be `True` or `False`. If `True`, saves **all** input and output pictures of **each** iteration of **each** epoch while training. This can help you visualize training process, but be very careful because it is extremely memory-consuming operation and may fill up your hard drive in no time. Saved pictures are located at `generated_files/train_progress`. Default is `False`.
 
     If you want to train the model from scratch, at first delete the file `web_app/components/my_model/model_weights.json`. It will initialize the model with random weights.

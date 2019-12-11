@@ -1,7 +1,4 @@
-data/
-prediction_result*/
-train_progress*/
-training*.log
+generated_files/
 
 # Created by https://www.gitignore.io/api/flask,python,virtualenv,visualstudiocode
 # Edit at https://www.gitignore.io/?templates=flask,python,virtualenv,visualstudiocode

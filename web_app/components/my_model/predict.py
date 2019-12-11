@@ -2,12 +2,13 @@ import json
 import random
 
 from ..nn.gpu import CP
-from .datasets import DIR_PATH, GeneratorDataset, decode_y, save_pictures, validation_dataset
+from .constants import MODEL_WEIGHTS_FILE_PATH, PREDICTION_RESULT_PATH
+from .datasets import GeneratorDataset, decode_y, save_pictures, validation_dataset
 from .model import make_unet
 
 
 def load_model(input_shape, output_shape):
-    model_weights_file = DIR_PATH / 'model_weights.json'
+    model_weights_file = MODEL_WEIGHTS_FILE_PATH
     try:
         weights = json.load(open(model_weights_file, 'r'))
     except OSError:
@@ -53,5 +54,5 @@ def main(use_gpu=False, generate=False):
 
     pred_images, th_images = predict(X, model)
 
-    save_path = DIR_PATH / 'prediction_result'
+    save_path = PREDICTION_RESULT_PATH
     save_pictures(save_path, X_image, y_images, pred_images, th_images)

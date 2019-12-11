@@ -1,14 +1,11 @@
 import random
-from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
 from ..nn.gpu import CP
-from .constants import INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES
-from .train_data import generate_picture
-
-DIR_PATH = Path('web_app', 'components', 'my_model')
+from .constants import INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES, TRAIN_DATA_PATH, VALIDATION_DATA_PATH
+from .train_data_generator import generate_picture
 
 
 def encode_X(image):
@@ -116,8 +113,8 @@ class RandomSelectDataset(BaseDataset):
         return self.source_dataset.get_images(self.selected[idx])
 
 
-train_dataset = Dataset(10000, DIR_PATH / 'data' / 'train')
-validation_dataset = Dataset(1000, DIR_PATH / 'data' / 'validation')
+train_dataset = Dataset(10000, TRAIN_DATA_PATH)
+validation_dataset = Dataset(1000, VALIDATION_DATA_PATH)
 
 
 def save_pictures(save_path, X_image, y_images, pred_images, th_images, prefix=''):

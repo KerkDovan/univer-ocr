@@ -1,17 +1,15 @@
-from pathlib import Path
-
 from tqdm import tqdm
 
-from .train_data import DataGenerator, generate_picture
+from .constants import TRAIN_DATA_PATH, VALIDATION_DATA_PATH
+from .train_data_generator import DataGenerator, generate_picture
 
 
 def main(*args, **kwargs):
     data_generator = DataGenerator(640, 480, 4, generator_func=generate_picture)
     data_generator.start()
 
-    path = Path('web_app', 'components', 'my_model', 'data')
-    train_path = path / 'train'
-    val_path = path / 'validation'
+    train_path = TRAIN_DATA_PATH
+    val_path = VALIDATION_DATA_PATH
 
     train_path.mkdir(parents=True, exist_ok=True)
     val_path.mkdir(parents=True, exist_ok=True)
