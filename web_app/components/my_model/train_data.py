@@ -1,9 +1,10 @@
-from multiprocessing import Process, Queue
 import os
+from multiprocessing import Process, Queue
 
 import numpy as np
 
 from ..image_generator import LayeredImage, random_font, random_text
+from .constants import INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES
 
 
 def generate_picture(width, height):
@@ -16,11 +17,8 @@ def generate_picture(width, height):
 
 def generate_train_data(width, height):
     picture = generate_picture(width, height)
-    layer_names = ['char_mask_box']  # LayeredImage.layer_names
-    X = np.array(picture['image'])
-    y = np.array([np.array(picture[name])
-                  for name in layer_names
-                  if name != 'image'])
+    X = np.array(picture[INPUT_LAYER_NAME])
+    y = np.array([np.array(picture[name]) for name in OUTPUT_LAYER_NAMES])
     y = np.moveaxis(y, 0, -1)
     X = np.reshape(X, (1, *X.shape)) / 255
     y = np.reshape(y, (1, *y.shape)) / 255

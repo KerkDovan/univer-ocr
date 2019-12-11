@@ -4,12 +4,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from ..image_generator import LayeredImage
 from ..nn.gpu import CP
+from .constants import INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES
 from .train_data import generate_picture
 
 DIR_PATH = Path('web_app', 'components', 'my_model')
-LAYER_NAMES = [name for name in LayeredImage.layer_names if name != 'image']
 
 
 def encode_X(image):
@@ -81,7 +80,7 @@ class Dataset(BaseDataset):
         X_path = self.dirpath / f'{idx}_image.png'
         y_paths = [
             self.dirpath / f'{idx}_{layer_name}.png'
-            for layer_name in LAYER_NAMES
+            for layer_name in OUTPUT_LAYER_NAMES
         ]
         X_image = Image.open(X_path)
         y_images = [Image.open(y_path) for y_path in y_paths]
@@ -98,8 +97,8 @@ class GeneratorDataset(BaseDataset):
         width = self.width if width is None else width
         height = self.height if height is None else height
         picture = generate_picture(width, height)
-        X_image = picture['image']
-        y_images = [picture[layer_name] for layer_name in LAYER_NAMES]
+        X_image = picture[INPUT_LAYER_NAME]
+        y_images = [picture[layer_name] for layer_name in OUTPUT_LAYER_NAMES]
         return X_image, y_images
 
 
@@ -122,7 +121,7 @@ validation_dataset = Dataset(1000, DIR_PATH / 'data' / 'validation')
 
 
 def save_pictures(save_path, X_image, y_images, pred_images, th_images, prefix=''):
-    for i, layer_name in enumerate(LAYER_NAMES):
+    for i, layer_name in enumerate(OUTPUT_LAYER_NAMES):
         sp = save_path / layer_name
         sp.mkdir(parents=True, exist_ok=True)
         X_image.save(sp / f'{prefix}_1_X.png')
