@@ -16,8 +16,9 @@ class SegmentationDice2D(BaseLoss):
         def sum_reshape(array):
             return CP.cp.sum(array, axis=(1, 2)).reshape(new_shape)
 
-        numerator = sum_reshape(prediction * ground_truth)
-        denominator = sum_reshape(prediction) + sum_reshape(ground_truth)
+        eps = 1e-8
+        numerator = sum_reshape(prediction * ground_truth) + eps
+        denominator = sum_reshape(prediction) + sum_reshape(ground_truth) + 2 * eps
 
         loss = CP.cp.sum(1 - 2 * numerator / denominator)
         grad = -2 * (ground_truth * denominator - numerator) / denominator ** 2
@@ -32,8 +33,9 @@ class SegmentationJaccard2D(BaseLoss):
         def sum_reshape(array):
             return CP.cp.sum(array, axis=(1, 2)).reshape(new_shape)
 
-        numerator = sum_reshape(prediction * ground_truth)
-        denominator = sum_reshape(prediction) + sum_reshape(ground_truth) - numerator
+        eps = 1e-8
+        numerator = sum_reshape(prediction * ground_truth) + eps
+        denominator = sum_reshape(prediction) + sum_reshape(ground_truth) - numerator + 2 * eps
 
         loss = CP.cp.sum(1 - numerator / denominator)
         grad = -(ground_truth * denominator - numerator * (1 - ground_truth)) / denominator ** 2
