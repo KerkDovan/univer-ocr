@@ -6,6 +6,7 @@ from pprint import pformat
 import numba
 
 from ..nn.gpu import CP
+from ..nn.optimizers import Adam
 from ..nn.progress_tracker import ProgressTracker
 from ..nn.trainer import Trainer
 from .model import make_unet
@@ -99,7 +100,8 @@ def train_model(use_gpu=False):
         print('No model_weights.json file found')
         weights = {}
 
-    model = make_unet(output_shape[3])
+    optimizer = Adam(lr=0.011)
+    model = make_unet(input_shape[3], output_shape[3], optimizer)
     model.initialize(input_shape)
     model.init_progress_tracker(tracker)
     model.set_weights(weights)
