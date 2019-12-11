@@ -91,7 +91,7 @@ To run any scripts in this project you should either activate `virtualenv` (see 
 3. To train the model run this command:
 
     ```bat
-    python run train [use_gpu] [console_mode] [show_progress_bar] [save_train_progress]
+    python run train [use_gpu [console_mode [show_progress_bar [save_train_progress]]]]
     ```
 
     As you see, this command has a bunch of arguments:
