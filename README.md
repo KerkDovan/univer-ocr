@@ -98,7 +98,7 @@ To run any scripts in this project you should either activate `virtualenv` (see 
 
     - `use_gpu`: may be `True` or `False`. If `True`, makes script to use your GPU, otherwise runs on CPU. Default is `False`.
 
-    - `console_mode`: may be `True` or `False`. If `False`, makes your script to connect to web application (from step `1` of usage), otherwise prints all output in the console. Default is `True`.
+    - `console_mode`: may be `True` or `False`. If `False`, makes your script to connect to web application (from step `1` of *Usage*), otherwise prints all output in the console. Default is `True`.
 
     - `show_progress_bar`: may be `True` or `False`. If `True`, displays progress bar for each epoch. Handy when running in console mode, but dramatically increases number of lines in log file, if you redirect output from console to file. Default is `False`.
 
