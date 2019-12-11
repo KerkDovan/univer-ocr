@@ -1,4 +1,5 @@
 from multiprocessing import Process, Queue
+import os
 
 import numpy as np
 
@@ -26,22 +27,23 @@ def generate_train_data(width, height):
     return X, y
 
 
-def put_train_data(width, height, queue):
+def put_train_data(width, height, queue, generator_func):
     while True:
-        train_data = generate_train_data(width, height)
+        train_data = generator_func(width, height)
         queue.put(train_data)
 
 
 class DataGenerator:
-    def __init__(self, width, height, queue_size):
+    def __init__(self, width, height, queue_size, generator_func=generate_train_data):
         self.width = width
         self.height = height
         self.queue_size = queue_size
+        self.generator_func = generator_func
         self.data_queue = Queue(maxsize=self.queue_size)
         self.workers = [
             Process(target=put_train_data, daemon=True,
-                    args=(self.width, self.height, self.data_queue))
-            for _ in range(self.queue_size)
+                    args=(self.width, self.height, self.data_queue, self.generator_func))
+            for _ in range(min(self.queue_size, os.cpu_count()))
         ]
 
     def start(self):
