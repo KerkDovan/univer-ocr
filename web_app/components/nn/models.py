@@ -281,6 +281,9 @@ class Model(BaseModel):
                 continue
             layer.set_weights(layer_weights)
 
+    def nan_weights(self):
+        return any(layer.nan_weights() for layer in self.layers.values())
+
     def count_parameters(self):
         return sum([layer.count_parameters() for layer in self.layers.values()])
 

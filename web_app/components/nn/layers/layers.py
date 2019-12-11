@@ -116,6 +116,9 @@ class BaseLayer:
                 continue
             param.value = CP.copy(cur_weights)
 
+    def nan_weights(self):
+        return any(CP.cp.isnan(param.value).any() for param in self.params().values())
+
     def count_parameters(self, param=None):
         if param is not None:
             return self.params()[param].value.size
