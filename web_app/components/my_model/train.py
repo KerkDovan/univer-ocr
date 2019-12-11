@@ -1,5 +1,4 @@
 import json
-from datetime import datetime
 from pathlib import Path
 from pprint import pformat
 
@@ -8,15 +7,12 @@ import numba
 from ..nn.gpu import CP
 from ..nn.optimizers import Adam
 from ..nn.progress_tracker import ProgressTracker
-from ..nn.trainer import Trainer
+from .datasets import (
+    RandomSelectDataset, decode_X, decode_y, save_pictures, train_dataset, validation_dataset)
 from .model import make_unet
-from .train_data import DataGenerator
+from .trainer import Trainer
 
 emitter = None
-
-
-def now():
-    return datetime.now()
 
 
 def init_emitter(new_emitter):
@@ -51,7 +47,7 @@ def emit_status(status):
     emit('progress_tracker', status)
 
 
-def train_model(use_gpu=False):
+def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=False):
     if use_gpu:
         CP.use_gpu()
         print('Using GPU')
@@ -81,24 +77,22 @@ def train_model(use_gpu=False):
     tracker = ProgressTracker(emit_status)
     tracker.reset()
 
-    data_generator = DataGenerator(width=16 * 40, height=16 * 30, queue_size=3)
-    data_generator.start()
-
-    def generate_data():
-        X, y = data_generator.get_data()
-        return CP.copy(X), CP.copy(y)
-
-    X, y = generate_data()
-    input_shape, output_shape = X.shape, y.shape
-    message(f'Input shape: {input_shape}, output shape: {output_shape}')
-    del X, y
-
     model_weights_file = Path('web_app', 'components', 'my_model', 'model_weights.json')
+    train_progress_path = Path('web_app', 'components', 'my_model', 'train_progress')
+
     try:
         weights = json.load(open(model_weights_file, 'r'))
     except OSError:
         print('No model_weights.json file found')
         weights = {}
+
+    random_train_dataset = RandomSelectDataset(10, train_dataset)
+    random_validation_dataset = RandomSelectDataset(1, validation_dataset)
+
+    X, y = random_train_dataset.get(0)
+    input_shape, output_shape = X.shape, y.shape
+    message(f'Input shape: {input_shape}, output shape: {output_shape}')
+    del X, y
 
     optimizer = Adam(lr=0.011)
     model = make_unet(input_shape[3], output_shape[3], optimizer)
@@ -106,17 +100,31 @@ def train_model(use_gpu=False):
     model.init_progress_tracker(tracker)
     model.set_weights(weights)
 
+    def load_weights_func():
+        model.set_weights(json.load(open(model_weights_file, 'r')))
+
+    def save_weights_func():
+        json.dump(model.get_weights(), open(model_weights_file, 'w'), separators=(',', ':'))
+
+    if save_train_progress:
+        def save_pictures_func(epoch, phase, index, X, y, p):
+            X_image = decode_X(X)
+            y_images, _ = decode_y(y)
+            pred_images, th_images = decode_y(p)
+            save_pictures(train_progress_path, X_image, y_images, pred_images, th_images,
+                          f'{epoch}_{phase}_{index}')
+        print(f'Saving train progress into {train_progress_path}\n')
+    else:
+        save_pictures_func = None
+
     message(pformat(model.get_all_output_shapes(input_shape)))
     message(f'Count of parameters: {model.count_parameters()}')
 
-    trainer = Trainer(model, generate_data, generate_data, tracker)
+    trainer = Trainer(
+        model, random_train_dataset, random_validation_dataset,
+        progress_tracker=tracker, show_progress_bar=show_progress_bar,
+        optimizer=optimizer, learning_rate_step=0.995,
+        save_weights_func=save_weights_func, save_pictures_func=save_pictures_func)
 
-    message(f'[{now()}] Starting training')
-
-    cnt = 1
-    while True:
-        ts = now()
-        train_loss, test_loss = trainer.train_once(num_epochs=100)
-        json.dump(model.get_weights(), open(model_weights_file, 'w'))
-        message(f'[{now()}] Time required: {now() - ts} #{cnt}\n\n')
-        cnt += 1
+    best_loss, best_loss_epoch = trainer.train(num_epochs=1000)
+    message(f'Complete. Best loss was {best_loss} on epoch #{best_loss_epoch}')
