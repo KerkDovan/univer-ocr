@@ -104,6 +104,15 @@ class Model(BaseModel):
 
         self.is_initialized = True
 
+    def __getitem__(self, key):
+        if key in self.layers.keys():
+            return self.layers[key]
+        split_key = key.split('/', 1)
+        if len(split_key) < 2:
+            raise KeyError(f'No such layer: {key}')
+        layer_name, subkey = split_key
+        return self.layers[layer_name][subkey]
+
     @track_this('forward')
     def forward(self, inputs):
         inputs = make_list_if_not(inputs)
