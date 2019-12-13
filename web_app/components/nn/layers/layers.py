@@ -187,16 +187,16 @@ class BaseLayerGPU(BaseLayer):
     def clear_memory(self):
         raise NotImplementedError()
 
-    def _make_forward_cpu():
+    def _make_forward_cpu(self):
         raise NotImplementedError()
 
-    def _make_backward_cpu():
+    def _make_backward_cpu(self):
         raise NotImplementedError()
 
-    def _make_forward_gpu():
+    def _make_forward_gpu(self):
         raise NotImplementedError()
 
-    def _make_backward_gpu():
+    def _make_backward_gpu(self):
         raise NotImplementedError()
 
 
