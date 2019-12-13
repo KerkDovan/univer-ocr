@@ -271,6 +271,17 @@ class Model(BaseModel):
     def get_output_shapes(self, input_shapes):
         return self.get_all_output_shapes(input_shapes)[0]
 
+    def get_leaf_layers(self):
+        result = {}
+        for layer_name, layer in self.layers.items():
+            if isinstance(layer, Model):
+                submodel_layers = layer.get_leaf_layers()
+                for name, sub_layer in submodel_layers.items():
+                    result[f'{layer_name}/{name}'] = sub_layer
+            else:
+                result[layer_name] = layer
+        return result
+
     def params(self):
         result = {
             f'{layer_name}/{name}': param
