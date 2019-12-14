@@ -23,7 +23,7 @@ def start(args):
         return
     try:
         trainer = Popen([str(python_executable), '-u', str(trainer_filepath),
-                         str(args['use_gpu']), False],
+                         str(args['use_gpu']), str(False)],
                         stdout=PIPE, stderr=PIPE)
         for output in trainer.stdout:
             emit('message', output.decode('utf-8'))

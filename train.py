@@ -6,10 +6,14 @@ from socketIO_client import BaseNamespace, SocketIO
 from web_app.components.my_model.train import init_emitter, train_model
 
 
+def bool_convert(arg):
+    return {'true': True, 'false': False}.get(str(arg).lower(), arg)
+
+
 def main(use_gpu=False, console_mode=True, show_progress_bar=False, save_train_progress=False):
     client = None
 
-    if console_mode:
+    if bool_convert(console_mode):
         print('Running in console mode')
 
     else:
@@ -23,9 +27,9 @@ def main(use_gpu=False, console_mode=True, show_progress_bar=False, save_train_p
 
     try:
         train_model(
-            use_gpu == 'True' or use_gpu is True,
-            show_progress_bar == 'True' or show_progress_bar is True,
-            save_train_progress == 'True' or save_train_progress is True,
+            bool_convert(use_gpu),
+            bool_convert(show_progress_bar),
+            bool_convert(save_train_progress),
         )
 
     except KeyboardInterrupt:
