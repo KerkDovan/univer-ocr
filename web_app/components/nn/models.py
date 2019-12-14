@@ -47,6 +47,7 @@ class Model(BaseModel):
         self.loss = loss
         self.input_grads = {}
         self.is_initialized = False
+        self._receptive_fields = {}
 
         self.unravel_model()
 
@@ -318,6 +319,106 @@ class Model(BaseModel):
 
     def get_outputs_count(self):
         return self.outputs_count
+
+    def is_fully_convolutional(self):
+        return all(layer.is_fully_convolutional() for layer in self.layers.values())
+
+    def changes_receptive_field(self):
+        return any(layer.changes_receptive_field() for layer in self.layers.values())
+
+    def get_receptive_fields(self):
+        assert self.is_initialized, (
+            f'The model must be initialized before calling this method')
+        assert self.is_fully_convolutional(), (
+            f'This method is only available for Fully Convolutional Networks (FCN)')
+
+        for output_id in range(self.get_outputs_count()):
+            for axis in range(2):
+                self._get_receptive_field(axis, 0, output_id)
+
+        tmp = {
+            layer_name: (
+                self._receptive_fields[layer_name, 0],
+                self._receptive_fields[layer_name, 1])
+            for layer_name in self._receptive_fields['relations'].keys()
+            if not isinstance(layer_name, int)
+        }
+        result = {}
+        for layer_name, (rf_y, rf_x) in tmp.items():
+            result[layer_name] = {}
+            for in_id in rf_y.keys():
+                rf1_y, rf1_x = rf_y[in_id], rf_x[in_id]
+                cnt_y, cnt_x = len(rf1_y), len(rf1_x)
+                min_y, max_y = min(rf1_y), max(rf1_y)
+                min_x, max_x = min(rf1_x), max(rf1_x)
+                result[layer_name][f'input {in_id}'] = {
+                    'cnt': (cnt_y, cnt_x),
+                    'y': (min_y, max_y),
+                    'x': (min_x, max_x),
+                    'is_solid_y': (cnt_y == max_y - min_y + 1),
+                    'is_solid_x': (cnt_x == max_x - min_x + 1),
+                }
+
+        self._clear_receptive_fields_info()
+        return result
+
+    def _get_receptive_field(self, axis, position, output_id):
+        if (axis, position, output_id) in self._receptive_fields:
+            return self._receptive_fields[axis, position, output_id]
+
+        if 'relations' in self._receptive_fields:
+            relations = self._receptive_fields['relations']
+        else:
+            relations = {dst: srcs for dst, srcs in self.relations.items()}
+            for layer_name, layer in self.layers.items():
+                if layer.changes_receptive_field():
+                    continue
+                sources = relations[layer_name]
+                destinations = [dst for dst, src in relations.items()
+                                if layer_name == src or layer_name in src]
+                for dst in destinations:
+                    if relations[dst] == layer_name:
+                        relations[dst] = sources
+                    else:
+                        tmp = []
+                        for src in relations[dst]:
+                            tmp.extend(sources if src == layer_name else [src])
+                        relations[dst] = tmp
+                del relations[layer_name]
+            self._receptive_fields['relations'] = relations
+
+        input_keys = list(range(self.inputs_count))
+        all_input_points = {}
+
+        def rec_get_receptive_field(layer_name, axis, pos, out_id):
+            if (layer_name, axis, pos, out_id) in all_input_points:
+                return all_input_points[layer_name, axis, pos, out_id]
+            if isinstance(layer_name, int):
+                points = {0: set([pos])}
+            else:
+                points = self.layers[layer_name]._get_receptive_field(axis, pos, out_id)
+            input_points = {in_key: set() for in_key in input_keys}
+            for src_id, src in enumerate(relations[layer_name]):
+                if isinstance(src, int):
+                    input_points[src].update(points[src_id])
+                    continue
+                for point in points[src_id]:
+                    src_input_points = rec_get_receptive_field(src, axis, point, 0)
+                    for in_key, in_points in src_input_points.items():
+                        input_points[in_key].update(in_points)
+            all_input_points[layer_name, axis, pos, out_id] = input_points
+            return all_input_points[layer_name, axis, pos, out_id]
+
+        for layer_name in relations.keys():
+            self._receptive_fields[layer_name, axis] = rec_get_receptive_field(
+                layer_name, axis, 0, 0)
+
+        return rec_get_receptive_field(relations[output_id][0], axis, position, 0)
+
+    def _clear_receptive_fields_info(self):
+        for layer_name, layer in self.layers.items():
+            layer._clear_receptive_fields_info()
+        self._receptive_fields = {}
 
     def get_leaf_layers(self):
         if self.layers is not None:

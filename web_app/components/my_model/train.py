@@ -120,6 +120,8 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
     message(pformat(model.get_all_output_shapes(input_shape)))
     message(f'Count of parameters: {model.count_parameters()}')
 
+    message(pformat(model.get_receptive_fields(), width=150))
+
     trainer = Trainer(
         model, random_train_dataset, random_validation_dataset,
         progress_tracker=tracker, show_progress_bar=show_progress_bar,

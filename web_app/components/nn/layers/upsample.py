@@ -111,3 +111,23 @@ class Upsample2D(BaseLayerGPU):
         input_shapes = make_list_if_not(input_shapes)
         return [tuple((input_shapes[0][0],
                        *(np.array(input_shapes[0][1:]) * (*self.scale_factor, 1))))]
+
+    def changes_receptive_field(self):
+        return True
+
+    def _get_receptive_field(self, axis, position, output_id):
+        assert 0 <= axis < 2, f'Upsample2D has two axis, found {axis}'
+        assert output_id < self.get_outputs_count(), (
+            f'This layer has only {self.get_outputs_count()} outputs')
+
+        if (axis, position, output_id) in self._receptive_fields:
+            return self._receptive_fields[axis, position, output_id]
+
+        sf = self.scale_factor[axis]
+
+        result = []
+        start = position // sf
+        result.append(start)
+
+        self._receptive_fields[axis, position, output_id] = {0: set(result)}
+        return self._receptive_fields[axis, position, output_id]

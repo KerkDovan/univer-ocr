@@ -31,6 +31,7 @@ class BaseLayer:
                  optimizer=Adam()):
         self.name = name
         self.input_shapes = input_shapes
+        self.inputs_count = len(self.input_shapes) if self.input_shapes is not None else None
         self.trainable = trainable
         self.initializer = initializer
         self.regularizer = regularizer
@@ -39,6 +40,7 @@ class BaseLayer:
         self.is_initialized = True
 
         self._mem = {}
+        self._receptive_fields = {}
 
         self.progress_tracker = BaseProgressTracker()
 
@@ -48,6 +50,7 @@ class BaseLayer:
 
     def initialize(self, input_shapes):
         self.input_shapes = input_shapes
+        self.inputs_count = len(self.input_shapes)
         self.is_initialized = True
 
     @track_this('forward')
@@ -96,6 +99,20 @@ class BaseLayer:
 
     def get_outputs_count(self):
         return 1
+
+    def is_fully_convolutional(self):
+        return True
+
+    def changes_receptive_field(self):
+        return False
+
+    def _get_receptive_field(self, axis, position, output_id):
+        assert output_id < self.get_outputs_count(), (
+            f'This layer has only {self.get_outputs_count()} outputs')
+        return {0: set([position])}
+
+    def _clear_receptive_fields_info(self):
+        self._receptive_fields = {}
 
     def params(self):
         return {}
@@ -207,6 +224,7 @@ class Concat(BaseLayer):
     def __init__(self, axis=-1, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.axis = axis
+        self.is_initialized = self.inputs_count is not None
 
     @track_this('forward')
     def forward(self, inputs):
@@ -240,6 +258,14 @@ class Concat(BaseLayer):
         result[self.axis] = [input_shapes[0][0], *tmp][self.axis]
         return [tuple(result)]
 
+    def changes_receptive_field(self):
+        return True
+
+    def _get_receptive_field(self, axis, position, output_id):
+        assert output_id < self.get_outputs_count(), (
+            f'This layer has only {self.get_outputs_count()} outputs')
+        return {in_key: set([position]) for in_key in range(self.inputs_count)}
+
 
 class Flatten(BaseLayer):
     def _forward(self, X, mem_id=0):
@@ -253,6 +279,12 @@ class Flatten(BaseLayer):
     def get_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
         return [(input_shapes[0][0], np.product(input_shapes[0][1:]))]
+
+    def is_fully_convolutional(self):
+        return False
+
+    def _get_receptive_field(self, axis, position, output_id):
+        raise NotImplementedError(f'The method is not supported by Flatten Layer')
 
 
 class FullyConnected(BaseLayer):
@@ -300,6 +332,15 @@ class FullyConnected(BaseLayer):
     def get_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
         return [(input_shapes[0][0], self.n_output)]
+
+    def is_fully_convolutional(self):
+        return False
+
+    def _get_receptive_field(self, axis, position, output_id):
+        raise NotImplementedError(f'The method is not supported by Fully Connected Layer')
+
+    def changes_receptive_field(self):
+        return True
 
     def params(self):
         return {'w': self.w}

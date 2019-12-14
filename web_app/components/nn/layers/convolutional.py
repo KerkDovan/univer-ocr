@@ -298,5 +298,28 @@ class Convolutional2D(BaseLayerGPU):
 
         return [(batch_size, out_height, out_width, self.out_channels)]
 
+    def changes_receptive_field(self):
+        return True
+
+    def _get_receptive_field(self, axis, position, output_id):
+        assert 0 <= axis < 2, f'Convolutional2D has two axis, found {axis}'
+        assert output_id < self.get_outputs_count(), (
+            f'This layer has only {self.get_outputs_count()} outputs')
+
+        if (axis, position, output_id) in self._receptive_fields:
+            return self._receptive_fields[axis, position, output_id]
+
+        k = self.kernel_size[axis]
+        p = self.padding[axis]
+        s = self.stride[axis]
+
+        result = []
+        start = position * s - p
+        for ki in range(k):
+            result.append(start + ki)
+
+        self._receptive_fields[axis, position, output_id] = {0: set(result)}
+        return self._receptive_fields[axis, position, output_id]
+
     def params(self):
         return {'w': self.w, 'b': self.b}
