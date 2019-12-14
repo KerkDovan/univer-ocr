@@ -17,8 +17,9 @@ def main(module_name, use_gpu=False, *args, **kwargs):
         args = [bool_convert(arg) for arg in args]
         imported.main(use_gpu == 'True' or use_gpu is True, *args, **kwargs)
 
-    except Exception:
+    except Exception as e:
         print(traceback.format_exc())
+        raise e
 
 
 if __name__ == '__main__':

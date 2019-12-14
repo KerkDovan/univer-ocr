@@ -31,8 +31,9 @@ def main(use_gpu=False, console_mode=True, show_progress_bar=False, save_train_p
     except KeyboardInterrupt:
         print(f'Stopped by keyboard interrupt')
 
-    except Exception:
+    except Exception as e:
         print(traceback.format_exc())
+        raise e
 
     finally:
         if client is not None:

@@ -10,8 +10,9 @@ def main(test_name, use_gpu=False):
         imported = importlib.import_module(import_path + test_name)
         imported.main(use_gpu == 'True' or use_gpu is True)
 
-    except Exception:
+    except Exception as e:
         print(traceback.format_exc())
+        raise e
 
 
 if __name__ == '__main__':
