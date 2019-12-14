@@ -94,6 +94,9 @@ class BaseLayer:
         input_shapes = make_list_if_not(input_shapes)
         raise NotImplementedError()
 
+    def get_outputs_count(self):
+        return 1
+
     def params(self):
         return {}
 

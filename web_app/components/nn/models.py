@@ -37,21 +37,22 @@ class Model(BaseModel):
         if not isinstance(relations, dict):
             raise TypeError(f'relations argument must be dict, found: {type(relations).__name__}')
 
-        self.layers = layers
-        self.relations = relations
+        self.ravelled_layers = layers
+        self.ravelled_relations = relations
+        self.layers = None
+        self.relations = None
         self.relations_backward = {}
-        self.inputs_count = None
-        self.outputs_count = None
+        self.inputs_count = max(v for k, v in relations.items() if isinstance(v, int)) + 1
+        self.outputs_count = max(k for k, v in relations.items() if isinstance(k, int)) + 1
         self.loss = loss
         self.input_grads = {}
         self.is_initialized = False
 
+        self.unravel_model()
+
     def initialize(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
         self.input_shapes = input_shapes
-
-        self.inputs_count = max(v for k, v in self.relations.items() if isinstance(v, int)) + 1
-        self.outputs_count = max(k for k, v in self.relations.items() if isinstance(k, int)) + 1
 
         keys = list(set(self.layers.keys()) | set(self.relations.keys()))
         output_keys = [k for k in keys if isinstance(k, int)]
@@ -69,7 +70,6 @@ class Model(BaseModel):
             currently_being_visited[layer_name] = True
 
             layer_input_shapes = []
-            self.relations[layer_name] = make_list_if_not(self.relations[layer_name])
 
             for i, src in enumerate(self.relations[layer_name]):
                 if isinstance(src, int):
@@ -104,14 +104,59 @@ class Model(BaseModel):
 
         self.is_initialized = True
 
+    def unravel_model(self):
+        relations = {dst: make_list_if_not(src) for dst, src in self.ravelled_relations.items()}
+        for layer_name, layer in self.ravelled_layers.items():
+            if not isinstance(layer, Model):
+                continue
+
+            layer.unravel_model()
+
+            # sources of layer - destinations of self
+            layer_relations = {dst: srcs for dst, srcs in layer.relations.items()}
+            new_layer_relations = {}
+            for dst, srcs in layer_relations.items():
+                new_srcs = []
+                for src in srcs:
+                    if isinstance(src, int):
+                        new_srcs.append(relations[layer_name][src])
+
+                    else:
+                        new_srcs.append(f'{layer_name}/{src}')
+                dst_name = dst if isinstance(dst, int) else f'{layer_name}/{dst}'
+                new_layer_relations[dst_name] = new_srcs
+
+            # destinations of layer - sources of self
+            for dst, srcs in relations.items():
+                new_srcs = []
+                for src in srcs:
+                    if isinstance(src, str) and layer_name == src:
+                        for out_id in range(layer.get_outputs_count()):
+                            for unravelled_src in new_layer_relations[out_id]:
+                                new_srcs.append(unravelled_src)
+
+                    elif isinstance(src, tuple) and len(src) > 1 and layer_name == src[0]:
+                        for out_id in src[1:]:
+                            for unravelled_src in new_layer_relations[out_id]:
+                                new_srcs.append(unravelled_src)
+
+                    else:
+                        new_srcs.append(src)
+                relations[dst] = new_srcs
+
+            for out_id in range(layer.get_outputs_count()):
+                del new_layer_relations[out_id]
+            relations.update(new_layer_relations)
+            del relations[layer_name]
+
+        self.layers = self.get_leaf_layers()
+        self.relations = relations
+
+        for layer_name, layer in self.layers.items():
+            layer._set_name(layer_name)
+
     def __getitem__(self, key):
-        if key in self.layers.keys():
-            return self.layers[key]
-        split_key = key.split('/', 1)
-        if len(split_key) < 2:
-            raise KeyError(f'No such layer: {key}')
-        layer_name, subkey = split_key
-        return self.layers[layer_name][subkey]
+        return self.layers[key]
 
     @track_this('forward')
     def forward(self, inputs):
@@ -271,9 +316,14 @@ class Model(BaseModel):
     def get_output_shapes(self, input_shapes):
         return self.get_all_output_shapes(input_shapes)[0]
 
+    def get_outputs_count(self):
+        return self.outputs_count
+
     def get_leaf_layers(self):
+        if self.layers is not None:
+            return self.layers
         result = {}
-        for layer_name, layer in self.layers.items():
+        for layer_name, layer in self.ravelled_layers.items():
             if isinstance(layer, Model):
                 submodel_layers = layer.get_leaf_layers()
                 for name, sub_layer in submodel_layers.items():
@@ -313,20 +363,13 @@ class Model(BaseModel):
             total_loss += layer.regularize()
         return total_loss
 
-    def _set_name(self, name):
-        self.name = name
-        for layer_name, layer in self.layers.items():
-            layer._set_name(f'{self.name}/{layer_name}')
-
-    def init_progress_tracker(self, progress_tracker, set_names_recursively=True):
-        if set_names_recursively:
-            self._set_name(self.name or 'model')
-        else:
-            self.name = self.name or 'model'
+    def init_progress_tracker(self, progress_tracker, model_name='model'):
+        if self.name is None:
+            self.name = model_name
         self.progress_tracker = progress_tracker
         self.progress_tracker.register_layer(self.name)
         for layer in self.layers.values():
-            layer.init_progress_tracker(progress_tracker, set_names_recursively=False)
+            layer.init_progress_tracker(progress_tracker, None)
 
 
 class Sequential(Model):
