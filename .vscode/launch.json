@@ -40,7 +40,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceRoot}/train.py",
-            "args": ["False", "True"],
+            "args": ["False", "True", "True", "False"],
             "console": "integratedTerminal"
         },
         {
@@ -48,7 +48,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceRoot}/train.py",
-            "args": ["True", "True"],
+            "args": ["True", "True", "True", "False"],
             "console": "integratedTerminal"
         },
         {
@@ -56,7 +56,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceRoot}/train.py",
-            "args": ["False", "False"],
+            "args": ["False", "False", "False", "False"],
             "console": "integratedTerminal"
         },
         {
@@ -64,7 +64,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceRoot}/train.py",
-            "args": ["True", "False"],
+            "args": ["True", "False", "False", "False"],
             "console": "integratedTerminal"
         }
     ]
