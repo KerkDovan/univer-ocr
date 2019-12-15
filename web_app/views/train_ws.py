@@ -39,6 +39,11 @@ def trainer_message(message):
     emit('message', message, broadcast=True)
 
 
+@socketio.on('info', namespace='/train-ws')
+def trainer_info(data):
+    emit('info', data, broadcast=True)
+
+
 @socketio.on('progress_tracker', namespace='/train-ws')
 def trainer_progress_tracker(status):
     emit('progress_tracker', status, broadcast=True)

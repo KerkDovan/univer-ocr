@@ -1,5 +1,5 @@
 import json
-from pprint import pformat
+from pprint import pprint
 
 import numba
 
@@ -32,6 +32,16 @@ def message(*message, sep=' ', end='\n'):
         print(text)
         return
     emit('message', text)
+
+
+def emit_info(info):
+    if emitter is None:
+        for info_type, info_data in info.items():
+            print(f'{info_type}:')
+            pprint(info_data, indent=4)
+            print()
+        return
+    emit('info', info)
 
 
 def emit_status(status):
@@ -117,10 +127,31 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
     else:
         save_pictures_func = None
 
-    message(pformat(model.get_all_output_shapes(input_shape)))
-    message(f'Count of parameters: {model.count_parameters()}')
+    tmp_layer_names = list(model.get_leaf_layers().keys())
+    layer_names = ['model', *tmp_layer_names]
 
-    message(pformat(model.get_receptive_fields(), width=150))
+    tmp_output_shapes = model.get_all_output_shapes(input_shape)
+    tmp_output_shapes = {
+        'model': tmp_output_shapes[0],
+        **{name: shapes for name, shapes in tmp_output_shapes[1].items()},
+    }
+    output_shapes = {}
+    for layer_name, out_shapes in tmp_output_shapes.items():
+        output_shapes[layer_name] = [str(x) for x in out_shapes]
+
+    tmp_receptive_fields = model.get_receptive_fields()
+    receptive_fields = {}
+    for layer_name, rf in tmp_receptive_fields.items():
+        y, x, cnt = rf['input 0']['y'], rf['input 0']['x'], rf['input 0']['cnt']
+        receptive_fields[layer_name] = f'y={y}, x={x}, size={cnt}'
+
+    emit_info({
+        'layer_names': layer_names,
+        'output_shapes': output_shapes,
+        'receptive_fields': receptive_fields,
+    })
+
+    message(f'Count of parameters: {model.count_parameters()}')
 
     trainer = Trainer(
         model, random_train_dataset, random_validation_dataset,

@@ -283,6 +283,14 @@ class Model(BaseModel):
         output_shapes = {}
         all_output_shapes = {}
 
+        def from_numpy(shapes):
+            shapes = make_list_if_not(shapes)
+            result = []
+            for shape in shapes:
+                assert isinstance(shape, tuple)
+                result.append(tuple(int(x) for x in shape))
+            return result
+
         def rec_get_output_shapes(layer_name):
             if layer_name in output_shapes.keys():
                 return output_shapes[layer_name]
@@ -302,9 +310,9 @@ class Model(BaseModel):
                 return layer_input_shapes[0]
 
             tmp = self.layers[layer_name].get_all_output_shapes(layer_input_shapes)
-            output_shapes[layer_name] = tmp[0]
+            output_shapes[layer_name] = from_numpy(tmp[0])
             all_output_shapes.update({
-                f'{layer_name}/{k}': v for k, v in tmp[1].items()
+                f'{layer_name}/{k}': from_numpy(v) for k, v in tmp[1].items()
             })
             return output_shapes[layer_name]
 
@@ -312,7 +320,7 @@ class Model(BaseModel):
         for output in range(self.outputs_count):
             result.append(rec_get_output_shapes(output))
         all_output_shapes.update(output_shapes)
-        return result, all_output_shapes
+        return from_numpy(result), all_output_shapes
 
     def get_output_shapes(self, input_shapes):
         return self.get_all_output_shapes(input_shapes)[0]

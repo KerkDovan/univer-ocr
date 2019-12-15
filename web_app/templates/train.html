@@ -40,10 +40,12 @@
   <textarea class="form-control" id="messages" rows="15" readonly></textarea>
 </div>
 
-<table class="table table-sm mb-3" id="status">
+<table class="table table-sm mb-3" id="status-info">
   <thead>
     <tr>
       <th>Layer</th>
+      <th>Output shapes</th>
+      <th>Receptive fields</th>
       <th>Forward</th>
       <th>Backward</th>
     </tr>
@@ -65,9 +67,11 @@ $.fn.exists = function () {
   return this.length !== 0;
 }
 
-function make_status_row(name, safe_name) {
+function make_status_info_row(name, safe_name) {
   return `<tr id="${safe_name}">` +
     `<td>${name}</td>` +
+    `<td class="info-output-shapes"></td>` +
+    `<td class="info-receptive-fields"></td>` +
     `<td class="status-forward">False</td>` +
     `<td class="status-backward">False</td>` +
     `</tr>`;
@@ -82,21 +86,60 @@ window.onload = function() {
     $("#step").removeClass("btn-outline-warning btn-outline-primary btn-outline-success");
     $("#step").html("");
   }
+  function reset_status() {
+    for (let cell_class of ["status-forward", "status-backward"]) {
+      $("#status-info td." + cell_class).each(function () {
+        $(this).html("False");
+        $(this).removeClass("table-success");
+      });
+    }
+  }
+  function iter_over_rows(info, func) {
+    if (Array.isArray(info)) {
+      for (let name of info) {
+        let safe_name = name.split('/').join('-');
+        func(safe_name, name);
+      }
+    }
+    else {
+      for (let [name, data] of Object.entries(info)) {
+        let safe_name = name.split('/').join('-');
+        func(safe_name, data);
+      }
+    }
+  }
 
   let socket = io.connect("ws://127.0.0.1/train-ws");
   socket.on("message", function(message) {
     append_message(message);
   });
+  socket.on("info", function (info) {
+    for (let [info_type, info_data] of Object.entries(info)) {
+      if (info_type == "layer_names") {
+        iter_over_rows(info_data, function (safe_name, data) {
+          if (!$('#' + safe_name).exists()) {
+            $("#status-info tbody").append(make_status_info_row(data, safe_name));
+          }
+        });
+      }
+      if (info_type == "output_shapes") {
+        iter_over_rows(info_data, function (safe_name, data) {
+          let cell = $('#' + safe_name + " .info-output-shapes");
+          cell.html(data.join("<br>"));
+        });
+      }
+      if (info_type == "receptive_fields") {
+        iter_over_rows(info_data, function (safe_name, data) {
+          let cell = $('#' + safe_name + " .info-receptive-fields");
+          cell.html(data);
+        });
+      }
+    }
+  });
   socket.on("progress_tracker", function(status) {
     if (typeof status == "string") {
       if (status == "reset") {
-        reset_step();
-        for (let cell_class of ["status-forward", "status-backward"]) {
-          $("#status td." + cell_class).each(function () {
-            $(this).html("False");
-            $(this).removeClass("table-success");
-          });
-        }
+        reset_status();
       }
       else if (status == "generating_data") {
         reset_step();
@@ -122,7 +165,7 @@ window.onload = function() {
       let safe_name = name.split('/').join('-');
       let row_name = '#' + safe_name;
       if (!$(row_name).exists()) {
-        $("#status tbody").append(make_status_row(name, safe_name));
+        $("#status-info tbody").append(make_status_info_row(name, safe_name));
       }
       for (let [event_name, event] of Object.entries(events)) {
         let result = event.done ? event.time : "False";
@@ -143,8 +186,9 @@ window.onload = function() {
   });
   $("#clear-btn").click(function () {
     reset_step();
+    reset_status();
     $("#messages").html("");
-    $("#status tbody").html("");
+    $("#status-info tbody").html("");
   });
   $("#stop-btn").click(function () {
     socket.emit("stop");
