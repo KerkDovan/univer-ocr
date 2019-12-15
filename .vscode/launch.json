@@ -36,18 +36,35 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Train Neural Network - CPU",
+            "name": "Train Neural Network - CPU in console mode",
             "type": "python",
             "request": "launch",
             "program": "${workspaceRoot}/train.py",
+            "args": ["False", "True"],
             "console": "integratedTerminal"
         },
         {
-            "name": "Train Neural Network - GPU",
+            "name": "Train Neural Network - GPU in console mode",
             "type": "python",
             "request": "launch",
             "program": "${workspaceRoot}/train.py",
-            "args": ["True"],
+            "args": ["True", "True"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Train Neural Network - CPU in website mode",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/train.py",
+            "args": ["False", "False"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Train Neural Network - GPU in website mode",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/train.py",
+            "args": ["True", "False"],
             "console": "integratedTerminal"
         }
     ]
