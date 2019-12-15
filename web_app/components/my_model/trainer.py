@@ -47,7 +47,8 @@ class Trainer:
                 def pb(iterable, *args, **kwargs):
                     return iterable
 
-            for i in pb(range(len(self.train_dataset)), desc='Training', ascii=True):
+            iters_cnt = len(self.train_dataset)
+            for i in pb(range(iters_cnt), desc='Training', ascii=True):
                 self.progress_tracker.reset()
                 self.progress_tracker.message('training')
 
@@ -67,7 +68,8 @@ class Trainer:
 
             y_min, y_mean, y_max = None, None, None
 
-            for i in pb(range(len(self.validation_dataset)), desc='Validating', ascii=True):
+            iters_cnt = len(self.validation_dataset)
+            for i in pb(range(iters_cnt), desc='Validating', ascii=True):
                 self.progress_tracker.reset()
                 self.progress_tracker.message('validating')
 
@@ -78,17 +80,19 @@ class Trainer:
                 validation_loss += out_loss
 
                 p = None
-                if self.save_pictures_func is not None:
+                if self.save_pictures_func is not None or i == iters_cnt - 1:
                     p = self.model.predict(X)
+                if self.save_pictures_func is not None:
                     self.save_pictures_func(epoch, 'validation', i, X, y, p)
 
                 y_min = CP.asnumpy(CP.cp.min(y))
                 y_mean = CP.asnumpy(CP.cp.mean(y))
                 y_max = CP.asnumpy(CP.cp.max(y))
 
-                p_min = CP.asnumpy(CP.cp.min(p[0]))
-                p_mean = CP.asnumpy(CP.cp.mean(p[0]))
-                p_max = CP.asnumpy(CP.cp.max(p[0]))
+                if p is not None:
+                    p_min = CP.asnumpy(CP.cp.min(p[0]))
+                    p_mean = CP.asnumpy(CP.cp.mean(p[0]))
+                    p_max = CP.asnumpy(CP.cp.max(p[0]))
 
                 del X, y, p
                 gc.collect()
