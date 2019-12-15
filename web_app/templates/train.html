@@ -10,6 +10,19 @@
     background-color: white !important;
     white-space: pre;
   }
+  #iters-progress {
+    height: 12px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  #epochs-progress {
+    height: 8px;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+  .tooltip-inner {
+    white-space: pre-wrap;
+  }
 </style>
 
 {% endblock %}
@@ -38,6 +51,16 @@
 
 <div class="mb-3">
   <textarea class="form-control" id="messages" rows="15" readonly></textarea>
+</div>
+
+<div class="mb-3" title="" id="progressbars">
+  <div class="progress" id="iters-progress">
+    <div class="progress-bar bg-primary" style="width: 0%;" role="progressbar" id="train-iters-progressbar"></div>
+    <div class="progress-bar bg-success" style="width: 0%;" role="progressbar" id="val-iters-progressbar"></div>
+  </div>
+  <div class="progress" id="epochs-progress">
+    <div class="progress-bar bg-info" style="width: 0%;" role="progressbar" id="epochs-progressbar"></div>
+  </div>
 </div>
 
 <table class="table table-sm mb-3" id="status-info">
@@ -78,13 +101,26 @@ function make_status_info_row(name, safe_name) {
 }
 
 window.onload = function() {
+  var train_iter_current = 0, train_iters_total = 1;
+  var val_iter_current = 0, val_iters_total = 1;
+  var epoch_current = 0, epochs_total = 1;
+  $("#progressbars").tooltip();
+  var update_status = true;
+
   function append_message(message) {
     $("#messages").append(escapeHtml(message));
     document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
   }
   function reset_step() {
-    $("#step").removeClass("btn-outline-warning btn-outline-primary btn-outline-success");
+    let classes = "btn-outline-warning btn-outline-primary btn-outline-success";
+    $("#step").removeClass(classes);
     $("#step").html("");
+  }
+  function reset_progressbars() {
+    train_iter_current = 0;
+    val_iter_current = 0;
+    epoch_current = 0;
+    update_progress();
   }
   function reset_status() {
     for (let cell_class of ["status-forward", "status-backward"]) {
@@ -92,6 +128,24 @@ window.onload = function() {
         $(this).html("False");
         $(this).removeClass("table-success");
       });
+    }
+  }
+  function update_progress() {
+    let iters_total = train_iters_total + val_iters_total;
+    let train_iter_width = 100 * train_iter_current / iters_total;
+    let val_iter_width = 100 * val_iter_current / iters_total;
+    let epoch_width = 100 * epoch_current / epochs_total;
+    $("#train-iters-progressbar").css("width", train_iter_width + '%');
+    $("#val-iters-progressbar").css("width", val_iter_width + '%');
+    $("#epochs-progressbar").css("width", epoch_width + '%');
+    let new_title = (
+      `Epochs: ${epoch_current}/${epochs_total}\n` +
+      `Iterations (train): ${train_iter_current}/${train_iters_total}\n` +
+      `Iterations (validation): ${val_iter_current}/${val_iters_total}`);
+    let is_tooltip_shown = $(".tooltip").length > 0;
+    $("#progressbars").attr("data-original-title", new_title);
+    if (is_tooltip_shown) {
+      $("#progressbars").tooltip("show");
     }
   }
   function iter_over_rows(info, func) {
@@ -137,44 +191,70 @@ window.onload = function() {
     }
   });
   socket.on("progress_tracker", function(status) {
-    if (typeof status == "string") {
-      if (status == "reset") {
-        reset_status();
-      }
-      else if (status == "generating_data") {
-        reset_step();
-        $("#step").html("Generating data");
-        $("#step").addClass("btn-outline-warning");
-      }
-      else if (status == "training") {
-        reset_step();
-        $("#step").html("Training");
-        $("#step").addClass("btn-outline-primary");
-      }
-      else if (status == "testing") {
-        reset_step();
-        $("#step").html("Testing");
-        $("#step").addClass("btn-outline-success");
-      }
-      else {
-        append_message(status + "\n");
-      }
-      return;
+    let status_type = status["type"];
+    let status_data = status["data"];
+    if (status_type == "reset") {
+      reset_status();
     }
-    for (let [name, events] of Object.entries(status)) {
-      let safe_name = name.split('/').join('-');
-      let row_name = '#' + safe_name;
-      if (!$(row_name).exists()) {
-        $("#status-info tbody").append(make_status_info_row(name, safe_name));
-      }
-      for (let [event_name, event] of Object.entries(events)) {
-        let result = event.done ? event.time : "False";
-        let cell = $(row_name + ` .status-${event_name}`);
-        cell.html(result);
-        if (event.done) {
-          cell.addClass("table-success");
+    else if (status_type == "generating_data") {
+      reset_step();
+      $("#step").html("Generating data");
+      $("#step").addClass("btn-outline-warning");
+    }
+    else if (status_type == "training") {
+      reset_step();
+      $("#step").html("Training");
+      $("#step").addClass("btn-outline-primary");
+      $("#epochs-progressbar").addClass("btn-outline-primary");
+    }
+    else if (status_type == "validating") {
+      reset_step();
+      $("#step").html("Validating");
+      $("#step").addClass("btn-outline-success");
+      $("#epochs-progressbar").addClass("btn-outline-success");
+    }
+    else if (status_type == "train_iteration") {
+      train_iter_current = status_data["current"];
+      train_iters_total = status_data["total"];
+      update_progress();
+    }
+    else if (status_type == "val_iteration") {
+      val_iter_current = status_data["current"];
+      val_iters_total = status_data["total"];
+      update_progress();
+    }
+    else if (status_type == "epoch") {
+      epoch_current = status_data["current"] - 1;
+      epochs_total = status_data["total"];
+      update_progress();
+    }
+    else if (status_type == "disable_status_update") {
+      update_status = false;
+    }
+    else if (status_type == "enable_status_update") {
+      update_status = true;
+    }
+    else if (status_type == "forward_backward") {
+      if (!update_status)
+        return;
+      for (let [name, events] of Object.entries(status_data)) {
+        let safe_name = name.split('/').join('-');
+        let row_name = '#' + safe_name;
+        if (!$(row_name).exists()) {
+          $("#status-info tbody").append(make_status_info_row(name, safe_name));
+        }
+        for (let [event_name, event] of Object.entries(events)) {
+          let result = event.done ? event.time : "False";
+          let cell = $(row_name + ` .status-${event_name}`);
+          cell.html(result);
+          if (event.done) {
+            cell.addClass("table-success");
+          }
         }
       }
+    }
+    else {
+      append_message(status_data + "\n");
     }
   });
 
@@ -186,6 +266,7 @@ window.onload = function() {
   });
   $("#clear-btn").click(function () {
     reset_step();
+    reset_progressbars();
     reset_status();
     $("#messages").html("");
     $("#status-info tbody").html("");

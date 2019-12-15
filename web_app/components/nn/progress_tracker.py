@@ -74,14 +74,14 @@ class ProgressTracker(BaseProgressTracker):
     def start_tracking(self, name, event):
         self.layers[name][event] = Event(event)
         self.layers[name][event].start()
-        self.handler(self.get_summary())
+        self.handler(event, self.get_summary())
 
     def stop_tracking(self, name, event):
         self.layers[name][event].stop()
-        self.handler(self.get_summary())
+        self.handler(event, self.get_summary())
 
-    def message(self, message):
-        self.handler(message)
+    def message(self, message, data=None):
+        self.handler(message, data)
 
     def reset(self):
         self.handler('reset')

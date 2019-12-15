@@ -44,16 +44,18 @@ def emit_info(info):
     emit('info', info)
 
 
-def emit_status(status):
-    if isinstance(status, str):
-        emit('progress_tracker', status)
-        return
-    status = {
-        name: {
-            e['name']: {'done': e['done'], 'time': str(e['time'])}
-            for e in events}
-        for name, events in status.items()
-    }
+def emit_status(status_type, status_data=None):
+    if status_type in ['forward', 'backward']:
+        status_type = 'forward_backward'
+        status_data = {
+            name: {
+                e['name']: {'done': e['done'], 'time': str(e['time'])}
+                for e in events}
+            for name, events in status_data.items()
+        }
+    status = {'type': status_type}
+    if status_data is not None:
+        status['data'] = status_data
     emit('progress_tracker', status)
 
 
@@ -97,7 +99,7 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
         weights = {}
 
     random_train_dataset = RandomSelectDataset(10, train_dataset)
-    random_validation_dataset = RandomSelectDataset(1, validation_dataset)
+    random_validation_dataset = RandomSelectDataset(2, validation_dataset)
 
     X, y = random_train_dataset.get(0)
     input_shape, output_shape = X.shape, y.shape
@@ -159,5 +161,5 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
         optimizer=optimizer, learning_rate_step=0.995,
         save_weights_func=save_weights_func, save_pictures_func=save_pictures_func)
 
-    best_loss, best_loss_epoch = trainer.train(num_epochs=1000)
+    best_loss, best_loss_epoch = trainer.train(num_epochs=20)
     message(f'Complete. Best loss was {best_loss} on epoch #{best_loss_epoch}')

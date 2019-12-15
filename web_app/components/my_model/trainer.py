@@ -33,6 +33,16 @@ class Trainer:
             epoch_str = str(epoch).rjust(len(str(num_epochs)))
             print(f'[{dt.now()}]')
             print(f'Epoch {epoch_str}/{num_epochs}:')
+            self.progress_tracker.message('epoch', {
+                'current': epoch, 'total': num_epochs
+            })
+            self.progress_tracker.message('train_iteration', {
+                'current': 0, 'total': len(self.train_dataset)
+            })
+            self.progress_tracker.message('val_iteration', {
+                'current': 0, 'total': len(self.validation_dataset)
+            })
+
             if self.optimizer is not None:
                 print(f'  lr = {self.optimizer.lr}')
 
@@ -63,6 +73,10 @@ class Trainer:
                     p = self.model.predict(X)
                     self.save_pictures_func(epoch, 'train', i, X, y, p)
 
+                self.progress_tracker.message('train_iteration', {
+                    'current': i + 1, 'total': iters_cnt
+                })
+
                 del X, y, p
                 gc.collect()
 
@@ -81,7 +95,9 @@ class Trainer:
 
                 p = None
                 if self.save_pictures_func is not None or i == iters_cnt - 1:
+                    self.progress_tracker.message('disable_status_update')
                     p = self.model.predict(X)
+                    self.progress_tracker.message('enable_status_update')
                 if self.save_pictures_func is not None:
                     self.save_pictures_func(epoch, 'validation', i, X, y, p)
 
@@ -93,6 +109,10 @@ class Trainer:
                     p_min = CP.asnumpy(CP.cp.min(p[0]))
                     p_mean = CP.asnumpy(CP.cp.mean(p[0]))
                     p_max = CP.asnumpy(CP.cp.max(p[0]))
+
+                self.progress_tracker.message('val_iteration', {
+                    'current': i + 1, 'total': iters_cnt
+                })
 
                 del X, y, p
                 gc.collect()
