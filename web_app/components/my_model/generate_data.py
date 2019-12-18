@@ -1,6 +1,7 @@
 from tqdm import tqdm
 
-from .constants import TRAIN_DATA_PATH, VALIDATION_DATA_PATH
+from .constants import (
+    TRAIN_DATA_PATH, TRAIN_DATASET_LENGTH, VALIDATION_DATA_PATH, VALIDATION_DATASET_LENGTH)
 from .train_data_generator import DataGenerator, generate_picture
 
 
@@ -14,12 +15,12 @@ def main(*args, **kwargs):
     train_path.mkdir(parents=True, exist_ok=True)
     val_path.mkdir(parents=True, exist_ok=True)
 
-    for i in tqdm(range(10000)):
+    for i in tqdm(range(TRAIN_DATASET_LENGTH)):
         images = data_generator.get_data()
         for layer_name, image in images.items():
             image.save(train_path / f'{i}_{layer_name}.png')
 
-    for i in tqdm(range(1000)):
+    for i in tqdm(range(VALIDATION_DATASET_LENGTH)):
         images = data_generator.get_data()
         for layer_name, image in images.items():
             image.save(val_path / f'{i}_{layer_name}.png')

@@ -4,7 +4,9 @@ import numpy as np
 from PIL import Image
 
 from ..nn.gpu import CP
-from .constants import INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES, TRAIN_DATA_PATH, VALIDATION_DATA_PATH
+from .constants import (
+    INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES, OUTPUT_LAYER_NAMES_PLAIN, OUTPUT_LAYER_TAGS,
+    TRAIN_DATA_PATH, TRAIN_DATASET_LENGTH, VALIDATION_DATA_PATH, VALIDATION_DATASET_LENGTH)
 from .train_data_generator import generate_picture
 
 
@@ -22,32 +24,34 @@ def decode_X(X):
     return image
 
 
-def encode_y(images):
-    if not isinstance(images, list):
-        images = [images]
-    y = []
-    for image in images:
-        y.append(np.asarray(image))
-    y = np.moveaxis(y, 0, -1)
-    y = np.reshape(y, (1, *y.shape)) / 255
-    return y
+def encode_ys(images):
+    ys = []
+    idx = 0
+    for tag in OUTPUT_LAYER_TAGS:
+        y = []
+        for _ in OUTPUT_LAYER_NAMES[tag]:
+            y.append(np.asarray(images[idx]))
+            idx += 1
+        y = np.moveaxis(y, 0, -1)
+        y = np.reshape(y, (1, *y.shape)) / 255
+        ys.append(y)
+    return ys
 
 
-def decode_y(y):
-    if isinstance(y, list):
-        y = y[0]
-    y = CP.asnumpy(y)
-    y = [y[0, :, :, i] for i in range(y.shape[-1])]
+def decode_ys(ys):
     pred_images = []
     thresholded_images = []
-    for yi in y:
-        cm = np.mean(yi)
-        thresholded = ((yi >= cm) * 255).astype(np.uint8)
-        yi = (yi * 255).astype(np.uint8)
-        pred_image = Image.fromarray(yi)
-        thresholded_image = Image.fromarray(thresholded)
-        pred_images.append(pred_image)
-        thresholded_images.append(thresholded_image)
+    for y in ys:
+        y = CP.asnumpy(y)
+        y = [y[0, :, :, i] for i in range(y.shape[-1])]
+        for yi in y:
+            cm = np.mean(yi)
+            thresholded = ((yi >= cm) * 255).astype(np.uint8)
+            yi = (yi * 255).astype(np.uint8)
+            pred_image = Image.fromarray(yi)
+            thresholded_image = Image.fromarray(thresholded)
+            pred_images.append(pred_image)
+            thresholded_images.append(thresholded_image)
     return pred_images, thresholded_images
 
 
@@ -58,8 +62,8 @@ class BaseDataset:
     def get(self, idx, X_image=None, y_images=None):
         if X_image is None or y_images is None:
             X_image, y_images = self.get_images(idx)
-        X, y = encode_X(X_image), encode_y(y_images)
-        return CP.copy(X), CP.copy(y)
+        X, ys = encode_X(X_image), encode_ys(y_images)
+        return CP.copy(X), [CP.copy(y) for y in ys]
 
     def get_images(self, idx):
         raise NotImplementedError()
@@ -77,7 +81,7 @@ class Dataset(BaseDataset):
         X_path = self.dirpath / f'{idx}_image.png'
         y_paths = [
             self.dirpath / f'{idx}_{layer_name}.png'
-            for layer_name in OUTPUT_LAYER_NAMES
+            for layer_name in OUTPUT_LAYER_NAMES_PLAIN
         ]
         X_image = Image.open(X_path)
         y_images = [Image.open(y_path) for y_path in y_paths]
@@ -95,7 +99,7 @@ class GeneratorDataset(BaseDataset):
         height = self.height if height is None else height
         picture = generate_picture(width, height)
         X_image = picture[INPUT_LAYER_NAME]
-        y_images = [picture[layer_name] for layer_name in OUTPUT_LAYER_NAMES]
+        y_images = [picture[layer_name] for layer_name in OUTPUT_LAYER_NAMES_PLAIN]
         return X_image, y_images
 
 
@@ -113,12 +117,13 @@ class RandomSelectDataset(BaseDataset):
         return self.source_dataset.get_images(self.selected[idx])
 
 
-train_dataset = Dataset(10000, TRAIN_DATA_PATH)
-validation_dataset = Dataset(1000, VALIDATION_DATA_PATH)
+train_dataset = Dataset(TRAIN_DATASET_LENGTH, TRAIN_DATA_PATH)
+validation_dataset = Dataset(VALIDATION_DATASET_LENGTH, VALIDATION_DATA_PATH)
 
 
 def save_pictures(save_path, X_image, y_images, pred_images, th_images, prefix=''):
-    for i, layer_name in enumerate(OUTPUT_LAYER_NAMES):
+    for i in range(len(pred_images)):
+        layer_name = OUTPUT_LAYER_NAMES_PLAIN[i]
         sp = save_path / layer_name
         sp.mkdir(parents=True, exist_ok=True)
         X_image.save(sp / f'{prefix}_1_X.png')

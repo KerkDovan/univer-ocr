@@ -3,7 +3,7 @@ import random
 
 from ..nn.gpu import CP
 from .constants import MODEL_WEIGHTS_FILE_PATH, PREDICTION_RESULT_PATH
-from .datasets import GeneratorDataset, decode_y, save_pictures, validation_dataset
+from .datasets import GeneratorDataset, decode_ys, save_pictures, validation_dataset
 from .model import make_unet
 
 
@@ -23,7 +23,7 @@ def load_model(input_shape, output_shape):
 
 def predict(X, model):
     pred = model.predict(X)[0]
-    pred_images, th_images = decode_y(pred)
+    pred_images, th_images = decode_ys(pred)
     return pred_images, th_images
 
 

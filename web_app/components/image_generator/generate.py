@@ -12,6 +12,7 @@ from ..primitives import BITS_COUNT, CHARS, FONTS_LIST, encode_char
 class LayeredImage:
     layer_names = [
         'image',
+        'image_monochrome',
         'paragraph',
         'line_top',
         'line_center',
@@ -159,6 +160,8 @@ class LayeredImage:
 
     def _char(self, char, position, font):
         self.draw['image'].text(position, char, fill=self.colors['image'], font=font)
+        self.draw['image_monochrome'].text(
+            position, char, fill=self.colors['image_monochrome'], font=font)
         if self.use_demo:
             self.draw_demo['image'].text(
                 position, char, fill=self.colors_demo['image'], font=font)

@@ -8,8 +8,8 @@ from ..nn.optimizers import Adam
 from ..nn.progress_tracker import ProgressTracker
 from .constants import MODEL_WEIGHTS_FILE_PATH, TRAIN_PROGRESS_PATH
 from .datasets import (
-    RandomSelectDataset, decode_X, decode_y, save_pictures, train_dataset, validation_dataset)
-from .model import make_unet
+    RandomSelectDataset, decode_X, decode_ys, save_pictures, train_dataset, validation_dataset)
+from .model import make_start, make_unet
 from .trainer import Trainer
 
 emitter = None
@@ -92,74 +92,82 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
     model_weights_file = MODEL_WEIGHTS_FILE_PATH
     train_progress_path = TRAIN_PROGRESS_PATH
 
-    try:
-        weights = json.load(open(model_weights_file, 'r'))
-    except OSError:
-        print('No model_weights.json file found')
-        weights = {}
+    models = [
+        (make_start, 0.001, 0.995, 20),
+        (make_unet, 0.001, 0.995, 1000),
+    ]
 
-    random_train_dataset = RandomSelectDataset(10, train_dataset)
-    random_validation_dataset = RandomSelectDataset(2, validation_dataset)
+    for make_model_func, lr, lr_step, epochs in models:
+        random_train_dataset = RandomSelectDataset(50, train_dataset)
+        random_validation_dataset = RandomSelectDataset(5, validation_dataset)
 
-    X, y = random_train_dataset.get(0)
-    input_shape, output_shape = X.shape, y.shape
-    message(f'Input shape: {input_shape}, output shape: {output_shape}')
-    del X, y
+        X, ys = random_train_dataset.get(0)
+        input_shape, output_shapes = X.shape, [y.shape for y in ys]
+        message(f'Input shape: {input_shape}, output shapes: {output_shapes}')
+        del X, ys
 
-    optimizer = Adam(lr=0.011)
-    model = make_unet(input_shape[3], output_shape[3], optimizer)
-    model.initialize(input_shape)
-    model.init_progress_tracker(tracker)
-    model.set_weights(weights)
+        try:
+            weights = json.load(open(model_weights_file, 'r'))
+        except OSError:
+            print('No model_weights.json file found')
+            weights = {}
 
-    def load_weights_func():
-        model.set_weights(json.load(open(model_weights_file, 'r')))
+        optimizer = Adam(lr=lr)
+        model = make_model_func(input_shape, optimizer)
+        model.initialize(input_shape)
+        model.init_progress_tracker(tracker)
+        model.set_weights(weights)
 
-    def save_weights_func():
-        json.dump(model.get_weights(), open(model_weights_file, 'w'), separators=(',', ':'))
+        def update_weights_func():
+            try:
+                weights = json.load(open(model_weights_file, 'r'))
+            except OSError:
+                weights = {}
+            weights.update(model.get_weights())
+            json.dump(weights, open(model_weights_file, 'w'), separators=(',', ':'))
 
-    if save_train_progress:
-        def save_pictures_func(epoch, phase, index, X, y, p):
-            X_image = decode_X(X)
-            y_images, _ = decode_y(y)
-            pred_images, th_images = decode_y(p)
-            save_pictures(train_progress_path, X_image, y_images, pred_images, th_images,
-                          f'{epoch}_{phase}_{index}')
-        print(f'Saving train progress into {train_progress_path}\n')
-    else:
-        save_pictures_func = None
+        if save_train_progress:
+            def save_pictures_func(epoch, phase, index, X, y, p):
+                X_image = decode_X(X)
+                y_images, _ = decode_ys(y)
+                pred_images, th_images = decode_ys(p)
+                save_pictures(train_progress_path, X_image, y_images, pred_images, th_images,
+                              f'{epoch}_{phase}_{index}')
+            print(f'Saving train progress into {train_progress_path}\n')
+        else:
+            save_pictures_func = None
 
-    tmp_layer_names = list(model.get_leaf_layers().keys())
-    layer_names = ['model', *tmp_layer_names]
+        tmp_layer_names = list(model.get_leaf_layers().keys())
+        layer_names = ['model', *tmp_layer_names]
 
-    tmp_output_shapes = model.get_all_output_shapes(input_shape)
-    tmp_output_shapes = {
-        'model': tmp_output_shapes[0],
-        **{name: shapes for name, shapes in tmp_output_shapes[1].items()},
-    }
-    output_shapes = {}
-    for layer_name, out_shapes in tmp_output_shapes.items():
-        output_shapes[layer_name] = [str(x) for x in out_shapes]
+        tmp_output_shapes = model.get_all_output_shapes(input_shape)
+        tmp_output_shapes = {
+            'model': tmp_output_shapes[0],
+            **{name: shapes for name, shapes in tmp_output_shapes[1].items()},
+        }
+        output_shapes = {}
+        for layer_name, out_shapes in tmp_output_shapes.items():
+            output_shapes[layer_name] = [str(x) for x in out_shapes]
 
-    tmp_receptive_fields = model.get_receptive_fields()
-    receptive_fields = {}
-    for layer_name, rf in tmp_receptive_fields.items():
-        y, x, cnt = rf['input 0']['y'], rf['input 0']['x'], rf['input 0']['cnt']
-        receptive_fields[layer_name] = f'y={y}, x={x}, size={cnt}'
+        tmp_receptive_fields = model.get_receptive_fields()
+        receptive_fields = {}
+        for layer_name, rf in tmp_receptive_fields.items():
+            y, x, cnt = rf['input 0']['y'], rf['input 0']['x'], rf['input 0']['cnt']
+            receptive_fields[layer_name] = f'y={y}, x={x}, size={cnt}'
 
-    emit_info({
-        'layer_names': layer_names,
-        'output_shapes': output_shapes,
-        'receptive_fields': receptive_fields,
-    })
+        emit_info({
+            'layer_names': layer_names,
+            'output_shapes': output_shapes,
+            'receptive_fields': receptive_fields,
+        })
 
-    message(f'Count of parameters: {model.count_parameters()}')
+        message(f'Count of parameters: {model.count_parameters()}')
 
-    trainer = Trainer(
-        model, random_train_dataset, random_validation_dataset,
-        progress_tracker=tracker, show_progress_bar=show_progress_bar,
-        optimizer=optimizer, learning_rate_step=0.995,
-        save_weights_func=save_weights_func, save_pictures_func=save_pictures_func)
+        trainer = Trainer(
+            model, random_train_dataset, random_validation_dataset,
+            progress_tracker=tracker, show_progress_bar=show_progress_bar,
+            optimizer=optimizer, learning_rate_step=lr_step,
+            save_weights_func=update_weights_func, save_pictures_func=save_pictures_func)
 
-    best_loss, best_loss_epoch = trainer.train(num_epochs=20)
-    message(f'Complete. Best loss was {best_loss} on epoch #{best_loss_epoch}')
+        best_loss, best_loss_epoch = trainer.train(num_epochs=epochs)
+        message(f'Complete. Best loss was {best_loss} on epoch #{best_loss_epoch}')
