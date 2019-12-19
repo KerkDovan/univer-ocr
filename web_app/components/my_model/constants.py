@@ -13,6 +13,9 @@ OUTPUT_LAYER_TAGS = [
     'char_box',
     'bit',
 ]
+OUTPUT_LAYER_TAGS_IDS = {
+    name: i for i, name in enumerate(OUTPUT_LAYER_TAGS)
+}
 OUTPUT_LAYER_NAMES = {
     OUTPUT_LAYER_TAGS[0]: ['image_monochrome'],
     OUTPUT_LAYER_TAGS[1]: ['letter_spacing'],
@@ -26,6 +29,9 @@ OUTPUT_LAYER_NAMES_PLAIN = [
     for tag in OUTPUT_LAYER_TAGS
     for name in OUTPUT_LAYER_NAMES[tag]
 ]
+OUTPUT_LAYER_NAMES_PLAIN_IDS = {
+    name: i for i, name in enumerate(OUTPUT_LAYER_NAMES_PLAIN)
+}
 
 MODEL_WEIGHTS_FILE_PATH = Path('web_app', 'components', 'my_model', 'model_weights.json')
 GENERATED_FILES_PATH = Path('generated_files')

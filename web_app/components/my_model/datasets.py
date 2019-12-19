@@ -5,8 +5,9 @@ from PIL import Image
 
 from ..nn.gpu import CP
 from .constants import (
-    INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES, OUTPUT_LAYER_NAMES_PLAIN, OUTPUT_LAYER_TAGS,
-    TRAIN_DATA_PATH, TRAIN_DATASET_LENGTH, VALIDATION_DATA_PATH, VALIDATION_DATASET_LENGTH)
+    INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES, OUTPUT_LAYER_NAMES_PLAIN, OUTPUT_LAYER_NAMES_PLAIN_IDS,
+    OUTPUT_LAYER_TAGS, TRAIN_DATA_PATH, TRAIN_DATASET_LENGTH, VALIDATION_DATA_PATH,
+    VALIDATION_DATASET_LENGTH)
 from .train_data_generator import generate_picture
 
 
@@ -122,11 +123,16 @@ validation_dataset = Dataset(VALIDATION_DATASET_LENGTH, VALIDATION_DATA_PATH)
 
 
 def save_pictures(save_path, X_image, y_images, pred_images, th_images, prefix=''):
+    image_monochrome = pred_images[OUTPUT_LAYER_NAMES_PLAIN_IDS['image_monochrome']]
     for i in range(len(pred_images)):
         layer_name = OUTPUT_LAYER_NAMES_PLAIN[i]
         sp = save_path / layer_name
         sp.mkdir(parents=True, exist_ok=True)
-        X_image.save(sp / f'{prefix}_1_X.png')
+        if layer_name == 'image_monochrome':
+            this_X_image = X_image
+        else:
+            this_X_image = image_monochrome
+        this_X_image.save(sp / f'{prefix}_1_X.png')
         y_images[i].save(sp / f'{prefix}_2_y.png')
         pred_images[i].save(sp / f'{prefix}_3_pred.png')
         th_images[i].save(sp / f'{prefix}_4_thresholded.png')
