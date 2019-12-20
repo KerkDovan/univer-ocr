@@ -52,13 +52,14 @@ class Upsample2D(BaseLayerGPU):
 
         @cuda.jit
         def _forward_gpu_kernel(X, result):
-            startX, startY = cuda.grid(2)
+            startX, startY, startZ = cuda.grid(3)
             gridX = cuda.gridDim.x * cuda.blockDim.x
             gridY = cuda.gridDim.y * cuda.blockDim.y
+            gridZ = cuda.gridDim.z * cuda.blockDim.z
             for y in range(startY, X.shape[1], gridY):
                 for x in range(startX, X.shape[2], gridX):
-                    for batch in range(X.shape[0]):
-                        for channel in range(X.shape[3]):
+                    for channel in range(startZ, X.shape[3], gridZ):
+                        for batch in range(X.shape[0]):
                             _forward_gpu_kernel_func(
                                 X, result, batch, y, x, channel)
 
@@ -66,7 +67,7 @@ class Upsample2D(BaseLayerGPU):
             self._mem[mem_id] = X.shape
             output_shape = self.get_output_shapes(X.shape)[0]
             result = CP.cp.zeros(output_shape)
-            grid_dim, block_dim = self.get_kernel_dims(result, (1, 2))
+            grid_dim, block_dim = self.get_kernel_dims(X, (1, 2, 3))
             _forward_gpu_kernel[grid_dim, block_dim](X, result)
             cuda.synchronize()
             return result
@@ -87,20 +88,21 @@ class Upsample2D(BaseLayerGPU):
 
         @cuda.jit
         def _backward_gpu_kernel(grad, dx_total):
-            startX, startY = cuda.grid(2)
+            startX, startY, startZ = cuda.grid(3)
             gridX = cuda.gridDim.x * cuda.blockDim.x
             gridY = cuda.gridDim.y * cuda.blockDim.y
+            gridZ = cuda.gridDim.z * cuda.blockDim.z
             for y in range(startY, dx_total.shape[1], gridY):
                 for x in range(startX, dx_total.shape[2], gridX):
-                    for batch in range(dx_total.shape[0]):
-                        for channel in range(dx_total.shape[3]):
+                    for channel in range(startZ, dx_total.shape[3], gridZ):
+                        for batch in range(dx_total.shape[0]):
                             _backward_gpu_kernel_func(
                                 grad, dx_total, batch, y, x, channel)
 
         def _backward_gpu(self, grad, mem_id=0):
             input_shape = self._mem[mem_id]
             dx_total = CP.cp.zeros(input_shape)
-            grid_dim, block_dim = self.get_kernel_dims(grad, (1, 2))
+            grid_dim, block_dim = self.get_kernel_dims(grad, (1, 2, 3))
             _backward_gpu_kernel[grid_dim, block_dim](grad, dx_total)
             cuda.synchronize()
             return dx_total

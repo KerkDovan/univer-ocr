@@ -170,13 +170,14 @@ class Convolutional2D(BaseLayerGPU):
 
         @cuda.jit
         def _forward_gpu_kernel(X, w, b, result):
-            startX, startY = cuda.grid(2)
+            startX, startY, startZ = cuda.grid(3)
             gridX = cuda.gridDim.x * cuda.blockDim.x
             gridY = cuda.gridDim.y * cuda.blockDim.y
+            gridZ = cuda.gridDim.z * cuda.blockDim.z
             for y in range(startY, result.shape[1], gridY):
                 for x in range(startX, result.shape[2], gridX):
-                    for batch in range(result.shape[0]):
-                        for out_ch in range(result.shape[3]):
+                    for out_ch in range(startZ, result.shape[3], gridZ):
+                        for batch in range(result.shape[0]):
                             _forward_gpu_kernel_func(
                                 X, w, b, result,
                                 batch, y, x, out_ch)
@@ -185,7 +186,7 @@ class Convolutional2D(BaseLayerGPU):
             self._mem[mem_id] = X
             output_shape = self.get_output_shapes(X.shape)[0]
             result = CP.cp.zeros(output_shape)
-            grid_dim, block_dim = self.get_kernel_dims(result, (1, 2))
+            grid_dim, block_dim = self.get_kernel_dims(result, (1, 2, 3))
             _forward_gpu_kernel[grid_dim, block_dim](
                 X, self.w.value, self.b.value, result)
             cuda.synchronize()
@@ -200,7 +201,7 @@ class Convolutional2D(BaseLayerGPU):
         padding_value = self.padding_value
 
         @cuda.jit(device=True)
-        def _backward_gpu_kernel_dx_func(w, grad, dx_total, batch, y, x, out_ch):
+        def _backward_gpu_kernel_dx_func(w, grad, dx_total, batch, y, x, in_ch):
             for ky in range(kh):
                 tmp_gy = y - ky + ph
                 gy = tmp_gy // sh
@@ -211,8 +212,8 @@ class Convolutional2D(BaseLayerGPU):
                     gx = tmp_gx // sw
                     if gx * sw != tmp_gx or not 0 <= gx < grad.shape[2]:
                         continue
-                    cur_grad = grad[batch, gy, gx, out_ch]
-                    for in_ch in range(dx_total.shape[3]):
+                    for out_ch in range(grad.shape[3]):
+                        cur_grad = grad[batch, gy, gx, out_ch]
                         cur_w = w[ky, kx, in_ch, out_ch]
                         dx = cur_grad * cur_w
                         dx_total[batch, y, x, in_ch] += dx
@@ -237,25 +238,27 @@ class Convolutional2D(BaseLayerGPU):
 
         @cuda.jit
         def _backward_gpu_kernel_dx(w, grad, dx_total):
-            startX, startY = cuda.grid(2)
+            startX, startY, startZ = cuda.grid(3)
             gridX = cuda.gridDim.x * cuda.blockDim.x
             gridY = cuda.gridDim.y * cuda.blockDim.y
+            gridZ = cuda.gridDim.z * cuda.blockDim.z
             for y in range(startY, dx_total.shape[1], gridY):
                 for x in range(startX, dx_total.shape[2], gridX):
-                    for batch in range(grad.shape[0]):
-                        for out_ch in range(grad.shape[3]):
+                    for in_ch in range(startZ, dx_total.shape[3], gridZ):
+                        for batch in range(grad.shape[0]):
                             _backward_gpu_kernel_dx_func(
-                                w, grad, dx_total, batch, y, x, out_ch)
+                                w, grad, dx_total, batch, y, x, in_ch)
 
         @cuda.jit
         def _backward_gpu_kernel_dw_db(X, grad, dw_total, db_total):
-            startX, startY = cuda.grid(2)
+            startX, startY, startZ = cuda.grid(3)
             gridX = cuda.gridDim.x * cuda.blockDim.x
             gridY = cuda.gridDim.y * cuda.blockDim.y
+            gridZ = cuda.gridDim.z * cuda.blockDim.z
             for y in range(startY, grad.shape[1], gridY):
                 for x in range(startX, grad.shape[2], gridX):
-                    for batch in range(grad.shape[0]):
-                        for out_ch in range(grad.shape[3]):
+                    for out_ch in range(startZ, grad.shape[3], gridZ):
+                        for batch in range(grad.shape[0]):
                             _backward_gpu_kernel_dw_db_func(
                                 X, grad,
                                 dw_total[startY, startX], db_total[startY, startX],
@@ -264,14 +267,13 @@ class Convolutional2D(BaseLayerGPU):
         def _backward_gpu(self, grad, mem_id=0):
             X = self._mem[mem_id]
 
-            grid_dim, block_dim = self.get_kernel_dims(grad, (1, 2))
+            grid_dim, block_dim = self.get_kernel_dims(grad, (1, 2, 3))
             dx_total = CP.cp.zeros_like(X)
             _backward_gpu_kernel_dx[grid_dim, block_dim](self.w.value, grad, dx_total)
 
-            grid_dim, block_dim = (4, 4), (4, 4)
-            gridsize = (grid_dim[0] * block_dim[0], grid_dim[1] * block_dim[1])
-            dw_total = CP.cp.zeros((*gridsize, *self.w.value.shape))
-            db_total = CP.cp.zeros((*gridsize, *self.b.value.shape))
+            dw_total = CP.cp.zeros((4, 4, *self.w.value.shape))
+            db_total = CP.cp.zeros((4, 4, *self.b.value.shape))
+            grid_dim, block_dim = self.get_kernel_dims(dw_total, (0, 1, -1))
             _backward_gpu_kernel_dw_db[grid_dim, block_dim](X, grad, dw_total, db_total)
             cuda.synchronize()
 

@@ -198,9 +198,26 @@ class BaseLayerGPU(BaseLayer):
 
     def get_kernel_dims(self, array, axis):
         if isinstance(axis, int):
-            axis = [axis]
-        block_dim = tuple(16 for _ in range(len(axis)))
-        grid_dim = tuple(int(np.ceil(array.shape[axis[i]] / block_dim[i]))
+            axis = tuple([axis])
+        assert len(axis) <= 3, (
+            f'Only 3 dimensions available in CUDA grid, found: {len(axis)}')
+        shape = array.shape
+        # NOTE: For some reason I cannot use more than 256 threads,
+        # though maxThreadsPerBlock == 1024
+        if len(axis) == 1:
+            block_dim = (256,)
+        elif len(axis) == 2:
+            block_dim = (16, 16)
+        elif shape[axis[0]] * shape[axis[1]] <= 16:
+            block_dim = (shape[axis[0]], shape[axis[1]], 16)
+        elif shape[axis[2]] < 4:
+            block_dim = (16, 16, 1)
+        else:
+            block_dim = (8, 8, 4)
+        block_dim = tuple(
+            min(block_dim[i], shape[axis[i]])
+            for i in range(len(axis)))
+        grid_dim = tuple(int(np.ceil(shape[axis[i]] / block_dim[i]))
                          for i in range(len(axis)))
         return grid_dim, block_dim
 
