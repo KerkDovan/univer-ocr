@@ -44,6 +44,7 @@ class Model(BaseModel):
         self.relations_backward = {}
         self.inputs_count = max(v for k, v in relations.items() if isinstance(v, int)) + 1
         self.outputs_count = max(k for k, v in relations.items() if isinstance(k, int)) + 1
+        self.layers_outputs = {}
         self.loss = loss
         self.input_grads = {}
         self.is_initialized = False
@@ -192,6 +193,8 @@ class Model(BaseModel):
 
         for key in output_keys:
             rec_forward(key)
+
+        self.layers_outputs = outputs
 
         return [outputs[k] for k in range(self.outputs_count)]
 

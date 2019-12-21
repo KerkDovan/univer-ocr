@@ -1,9 +1,12 @@
+import os
 import random
+import shutil
 
 import numpy as np
 from PIL import Image
 
 from ..nn.gpu import CP
+from ..nn.help_func import make_list_if_not
 from .constants import (
     INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES, OUTPUT_LAYER_NAMES_PLAIN, OUTPUT_LAYER_NAMES_PLAIN_IDS,
     OUTPUT_LAYER_TAGS, TRAIN_DATA_PATH, TRAIN_DATASET_LENGTH, VALIDATION_DATA_PATH,
@@ -39,13 +42,18 @@ def encode_ys(images):
     return ys
 
 
-def decode_ys(ys):
+def decode_ys(ys, normalize=False):
     pred_images = []
     thresholded_images = []
     for y in ys:
         y = CP.asnumpy(y)
         y = [y[0, :, :, i] for i in range(y.shape[-1])]
         for yi in y:
+            if normalize:
+                yi -= np.min(yi)
+                max_val = np.max(yi)
+                if not np.isclose(max_val, 0):
+                    yi /= max_val
             cm = np.mean(yi)
             thresholded = ((yi >= cm) * 255).astype(np.uint8)
             yi = (yi * 255).astype(np.uint8)
@@ -136,3 +144,27 @@ def save_pictures(save_path, X_image, y_images, pred_images, th_images, prefix='
         y_images[i].save(sp / f'{prefix}_2_y.png')
         pred_images[i].save(sp / f'{prefix}_3_pred.png')
         th_images[i].save(sp / f'{prefix}_4_thresholded.png')
+
+
+def save_layers_outputs_pictures(save_path, layers_outputs):
+    if save_path.exists():
+        for path in save_path.iterdir():
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+    for layer_name, outputs in layers_outputs.items():
+        if isinstance(layer_name, int):
+            continue
+        layer_save_path = save_path / layer_name.replace('/', '_')
+        outputs = make_list_if_not(outputs)
+        for output_id in range(len(outputs)):
+            pred_save_path = layer_save_path / f'output_{output_id}_predicted'
+            th_save_path = layer_save_path / f'output_{output_id}_thresholded'
+            pred_save_path.mkdir(parents=True, exist_ok=True)
+            th_save_path.mkdir(parents=True, exist_ok=True)
+            output = [outputs[output_id]]
+            pred_images, th_images = decode_ys(output, normalize=True)
+            for channel, (pred, th) in enumerate(zip(pred_images, th_images)):
+                pred.save(pred_save_path / f'channel_{channel}.png')
+                th.save(th_save_path / f'channel_{channel}.png')
