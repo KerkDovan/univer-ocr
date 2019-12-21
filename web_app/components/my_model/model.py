@@ -1,14 +1,14 @@
 from ..nn.help_func import make_list_if_not
-from ..nn.layers import Concat, Convolutional2D, LeakyRelu, MaxPool2D, Sigmoid, Upsample2D
+from ..nn.layers import Concat, Convolutional2D, LeakyRelu, Sigmoid, Upsample2D
 from ..nn.losses import SegmentationDice2D
 from ..nn.models import Model
 from ..nn.optimizers import Adam
 from ..nn.regularizations import L2
-from .constants import OUTPUT_LAYER_NAMES, OUTPUT_LAYER_TAGS
+from .constants import OUTPUT_LAYER_NAMES, OUTPUT_LAYER_TAGS, OUTPUT_LAYER_TAGS_IDS
 
 
-def make_conv(out_ch, **kwargs):
-    return Convolutional2D((3, 3), out_channels=out_ch, padding=1,
+def make_conv(out_ch, kernel_size=(5, 5), padding=2, **kwargs):
+    return Convolutional2D(kernel_size, out_channels=out_ch, padding=padding,
                            regularizer=L2(0.01), **kwargs)
 
 
@@ -30,18 +30,6 @@ def make_conv_block(out_chs, last_sigmoid=False, **kwargs):
         prev = activation_name
     relations[0] = prev
     return Model(layers, relations)
-
-
-def make_down(out_chs, **kwargs):
-    return Model(layers={
-        'conv_block': make_conv_block(out_chs, **kwargs),
-        'pool': MaxPool2D(2),
-    }, relations={
-        'conv_block': 0,
-        'pool': 'conv_block',
-        0: 'conv_block',
-        1: 'pool',
-    })
 
 
 def make_up(out_chs, **kwargs):
@@ -66,10 +54,12 @@ def make_start(input_shape, optimizer=None):
         'trainable': True,
     }
 
-    ch_count_start = [in_channels, len(OUTPUT_LAYER_NAMES['monochrome'])]
+    ch_count_start = [len(OUTPUT_LAYER_NAMES['monochrome'])]
 
     model = Model(layers={
-        'start': make_conv_block(ch_count_start, True, **kwargs),
+        'start': make_conv_block(
+            ch_count_start, last_sigmoid=True,
+            kernel_size=(5, 5), padding=2, **kwargs),
     }, relations={
         'start': 0,
         0: 'start',
@@ -78,7 +68,7 @@ def make_start(input_shape, optimizer=None):
     return model
 
 
-def make_unet(input_shape, optimizer=None):
+def make_model(input_shape, optimizer=None):
     batch_size, height, width, in_channels = input_shape
     optimizer = Adam(lr=1e-2) if optimizer is None else optimizer
 
@@ -87,78 +77,81 @@ def make_unet(input_shape, optimizer=None):
         'trainable': True,
     }
 
-    ch_count_downs = [[1], [2], [4]]
-    ch_count_bottom = [8]
-    ch_count_middles = [[1], [1], [1]]
-    ch_count_ups = [[4], [8], [16]]
-    ch_count_end = [4, 8, 16]
-
-    assert len(ch_count_downs) == len(ch_count_middles) == len(ch_count_ups) > 0
-    depth = len(ch_count_downs)
-
-    assert OUTPUT_LAYER_TAGS[0] == 'monochrome'
-    assert OUTPUT_LAYER_TAGS[1] == 'letter_spacing'
-    assert OUTPUT_LAYER_TAGS[2] == 'paragraph'
-    assert OUTPUT_LAYER_TAGS[3] == 'line'
-    assert OUTPUT_LAYER_TAGS[4] == 'char_box'
-    assert OUTPUT_LAYER_TAGS[5] == 'bit'
-
-    non_end_output_layer_tags = ['monochrome']
-    end_output_layer_tags = [
-        tag for tag in OUTPUT_LAYER_TAGS
-        if tag not in non_end_output_layer_tags
+    layer_tags = [
+        layer_tag for layer_tag in OUTPUT_LAYER_TAGS
+        if layer_tag != 'monochrome'
     ]
 
-    ch_count_start = [in_channels, len(OUTPUT_LAYER_NAMES['monochrome'])]
+    ch_count_start = [len(OUTPUT_LAYER_NAMES['monochrome'])]
+    ch_count_downs = [
+        [64], [64],
+    ]
+    ch_count_down_bottom = [128]
+    ch_count_bottom = [64, 32, 16, 8]
+    ch_count_ups = [
+        [32, 16, 8], [32, 16, 8],
+    ]
+    ch_count_up_end = [8]
     ch_count_ends = {
-        'letter_spacing': [len(OUTPUT_LAYER_NAMES['letter_spacing'])],
-        'paragraph': [len(OUTPUT_LAYER_NAMES['paragraph'])],
-        'line': [len(OUTPUT_LAYER_NAMES['line'])],
-        'char_box': [len(OUTPUT_LAYER_NAMES['char_box'])],
-        'bit': [len(OUTPUT_LAYER_NAMES['bit'])],
+        layer_tag: [len(OUTPUT_LAYER_NAMES[layer_tag])]
+        for layer_tag in layer_tags
     }
 
-    model = Model(layers={
-        'start': make_conv_block(ch_count_start, last_sigmoid=True, **kwargs),
+    assert len(ch_count_downs) == len(ch_count_ups) > 0
+    depth = len(ch_count_downs)
+
+    layers = {
+        'start': make_conv_block(
+            ch_count_start, last_sigmoid=True,
+            kernel_size=(5, 5), padding=2, **kwargs),
         **{
-            f'down_{i + 1}': make_down(ch_count_downs[i], **kwargs)
+            f'down_{i + 1}': make_conv_block(
+                ch_count_downs[i], kernel_size=(3, 3), padding=1, stride=2, **kwargs)
             for i in range(depth)
         },
-        'bottom': make_conv_block(ch_count_bottom, **kwargs),
+        'down_bottom': make_conv_block(
+            ch_count_down_bottom, kernel_size=(3, 3), padding=1, stride=2, **kwargs),
+        'bottom': make_conv_block(
+            ch_count_bottom, kernel_size=(3, 3), padding=1, **kwargs),
         **{
-            f'middle_{i + 1}': make_conv_block(ch_count_middles[i], **kwargs)
+            f'up_{i + 1}': make_up(
+                ch_count_ups[i], kernel_size=(3, 3), padding=1, **kwargs)
             for i in range(depth)
         },
+        'up_end': make_up(
+            ch_count_up_end, kernel_size=(3, 3), padding=1, **kwargs),
         **{
-            f'up_{i + 1}': make_up(ch_count_ups[i], **kwargs)
-            for i in range(depth)
-        },
-        'end': make_conv_block(ch_count_end, **kwargs),
-        **{
-            f'end_{tag}': make_conv_block(ch_count_ends[tag], last_sigmoid=True, **kwargs)
-            for tag in end_output_layer_tags
-        },
-    }, relations={
+            f'end_{layer_tag}': make_conv_block(
+                ch_count_ends[layer_tag], last_sigmoid=True,
+                kernel_size=(3, 3), padding=1, **kwargs)
+            for layer_tag in layer_tags
+        }
+    }
+
+    relations = {
         'start': 0,
         0: 'start',
         'down_1': 'start',
-        **{f'down_{i + 2}': (f'down_{i + 1}', 1) for i in range(depth - 1)},
-        'bottom': (f'down_{depth}', 1),
-        **{f'middle_{i + 1}': (f'down_{i + 1}', 0) for i in range(depth)},
-        f'up_{depth}': [f'middle_{depth}', 'bottom'],
         **{
-            f'up_{i}': [f'middle_{i}', f'up_{i + 1}']
-            for i in range(depth - 1, 0, -1)
+            f'down_{i + 1}': f'down_{i}'
+            for i in range(1, depth)
         },
-        'end': 'up_1',
+        'down_bottom': f'down_{depth}',
+        'bottom': 'down_bottom',
+        f'up_{depth}': [f'down_{depth}', 'bottom'],
         **{
-            f'end_{tag}': 'end'
-            for tag in end_output_layer_tags
+            f'up_{i}': [f'down_{i}', f'up_{i + 1}']
+            for i in range(1, depth)
+        },
+        'up_end': ['start', 'up_1'],
+        **{
+            f'end_{layer_tag}': 'up_end'
+            for layer_tag in layer_tags
         },
         **{
-            i + len(OUTPUT_LAYER_TAGS) - len(end_output_layer_tags): f'end_{tag}'
-            for i, tag in enumerate(end_output_layer_tags)
+            OUTPUT_LAYER_TAGS_IDS[layer_tag]: f'end_{layer_tag}'
+            for layer_tag in layer_tags
         },
-    }, loss=SegmentationDice2D())
+    }
 
-    return model
+    return Model(layers=layers, relations=relations, loss=SegmentationDice2D())

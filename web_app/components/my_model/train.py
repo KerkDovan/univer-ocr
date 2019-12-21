@@ -9,7 +9,7 @@ from ..nn.progress_tracker import ProgressTracker
 from .constants import MODEL_WEIGHTS_FILE_PATH, TRAIN_PROGRESS_PATH
 from .datasets import (
     RandomSelectDataset, decode_X, decode_ys, save_pictures, train_dataset, validation_dataset)
-from .model import make_start, make_unet
+from .model import make_model, make_start
 from .trainer import Trainer
 
 emitter = None
@@ -93,8 +93,8 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
     train_progress_path = TRAIN_PROGRESS_PATH
 
     models = [
-        (make_start, 0.001, 0.995, 20),
-        (make_unet, 0.001, 0.995, 1000),
+        (make_start, 0.0015, 0.995, 5),
+        (make_model, 0.0015, 0.995, 100),
     ]
 
     for make_model_func, lr, lr_step, epochs in models:
