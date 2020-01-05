@@ -9,7 +9,7 @@ from ..nn.progress_tracker import ProgressTracker
 from .constants import MODEL_WEIGHTS_FILE_PATH, TRAIN_PROGRESS_PATH
 from .datasets import (
     RandomSelectDataset, decode_X, decode_ys, save_pictures, train_dataset, validation_dataset)
-from .model import make_model, make_start
+from .model import make_context, make_model_system
 from .trainer import Trainer
 
 emitter = None
@@ -92,12 +92,11 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
     model_weights_file = MODEL_WEIGHTS_FILE_PATH
     train_progress_path = TRAIN_PROGRESS_PATH
 
-    models = [
-        (make_start, 0.0015, 0.995, 5),
-        (make_model, 0.0015, 0.995, 100),
+    model_systems = [
+        (make_model_system, 0.0015, 0.995, 100),
     ]
 
-    for make_model_func, lr, lr_step, epochs in models:
+    for make_model_system_func, lr, lr_step, epochs in model_systems:
         random_train_dataset = RandomSelectDataset(50, train_dataset)
         random_validation_dataset = RandomSelectDataset(5, validation_dataset)
 
@@ -113,17 +112,18 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
             weights = {}
 
         optimizer = Adam(lr=lr)
-        model = make_model_func(input_shape, optimizer)
-        model.initialize(input_shape)
-        model.init_progress_tracker(tracker)
-        model.set_weights(weights)
+        model_system, models = make_model_system_func(
+            input_shape, optimizer, tracker, weights)
 
-        def update_weights_func():
+        def update_weights_func(models_to_update):
             try:
                 weights = json.load(open(model_weights_file, 'r'))
             except OSError:
                 weights = {}
-            weights.update(model.get_weights())
+            for name, model in models.items():
+                if name not in models_to_update:
+                    continue
+                weights.update(model.get_weights())
             json.dump(weights, open(model_weights_file, 'w'), separators=(',', ':'))
 
         if save_train_progress:
@@ -137,23 +137,29 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
         else:
             save_pictures_func = None
 
-        tmp_layer_names = list(model.get_leaf_layers().keys())
-        layer_names = ['model', *tmp_layer_names]
+        layer_names = list(models.keys()) + [
+            layer_name
+            for model in models.values()
+            for layer_name in model.get_leaf_layers().keys()
+        ]
 
-        tmp_output_shapes = model.get_all_output_shapes(input_shape)
-        tmp_output_shapes = {
-            'model': tmp_output_shapes[0],
-            **{name: shapes for name, shapes in tmp_output_shapes[1].items()},
-        }
         output_shapes = {}
-        for layer_name, out_shapes in tmp_output_shapes.items():
-            output_shapes[layer_name] = [str(x) for x in out_shapes]
+        for model_name, model in models.items():
+            tmp_output_shapes = model.get_all_output_shapes(input_shape)
+            tmp_output_shapes = {
+                model_name: tmp_output_shapes[0],
+                **{name: shapes for name, shapes in tmp_output_shapes[1].items()},
+            }
+            for layer_name, out_shapes in tmp_output_shapes.items():
+                output_shapes[layer_name] = [str(x) for x in out_shapes]
 
-        tmp_receptive_fields = model.get_receptive_fields()
         receptive_fields = {}
-        for layer_name, rf in tmp_receptive_fields.items():
-            y, x, cnt = rf['input 0']['y'], rf['input 0']['x'], rf['input 0']['cnt']
-            receptive_fields[layer_name] = f'y={y}, x={x}, size={cnt}'
+        for model in models.values():
+            tmp_receptive_fields = model.get_receptive_fields()
+            for layer_name, rf in tmp_receptive_fields.items():
+                y, x = rf['input 0']['y'], rf['input 0']['x']
+                cnt = rf['input 0']['cnt']
+                receptive_fields[layer_name] = f'y={y}, x={x}, size={cnt}'
 
         emit_info({
             'layer_names': layer_names,
@@ -161,10 +167,11 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
             'receptive_fields': receptive_fields,
         })
 
-        message(f'Count of parameters: {model.count_parameters()}')
+        count_parameters = sum(model.count_parameters() for model in models.values())
+        message(f'Count of parameters: {count_parameters}')
 
         trainer = Trainer(
-            model, random_train_dataset, random_validation_dataset,
+            model_system, models, random_train_dataset, random_validation_dataset,
             progress_tracker=tracker, show_progress_bar=show_progress_bar,
             optimizer=optimizer, learning_rate_step=lr_step,
             save_weights_func=update_weights_func, save_pictures_func=save_pictures_func)

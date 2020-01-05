@@ -1,10 +1,11 @@
 from ..nn.help_func import make_list_if_not
 from ..nn.layers import Concat, Convolutional2D, LeakyRelu, Sigmoid, Upsample2D
 from ..nn.losses import SegmentationDice2D
+from ..nn.model_system import FunctionComponent, ModelComponent, ModelSystem
 from ..nn.models import Model
 from ..nn.optimizers import Adam
 from ..nn.regularizations import L2
-from .constants import OUTPUT_LAYER_NAMES, OUTPUT_LAYER_TAGS, OUTPUT_LAYER_TAGS_IDS
+from .constants import OUTPUT_LAYER_NAMES, OUTPUT_LAYER_TAGS
 
 
 def make_conv(out_ch, kernel_size=(5, 5), padding=2, **kwargs):
@@ -45,7 +46,22 @@ def make_up(out_chs, **kwargs):
     })
 
 
-def make_start(input_shape, optimizer=None):
+def make_single_up(out_chs, **kwargs):
+    return Model(layers={
+        'upsample': Upsample2D(2),
+        'conv_block': make_conv_block(out_chs, **kwargs),
+    }, relations={
+        'upsample': 0,
+        'conv_block': 'upsample',
+        0: 'conv_block',
+    })
+
+
+def wrap(name, model, **kwargs):
+    return Model(layers={name: model}, relations={name: 0, 0: name}, **kwargs)
+
+
+def make_monochrome(input_shape, optimizer=None):
     batch_size, height, width, in_channels = input_shape
     optimizer = Adam(lr=1e-2) if optimizer is None else optimizer
 
@@ -54,21 +70,26 @@ def make_start(input_shape, optimizer=None):
         'trainable': True,
     }
 
-    ch_count_start = [len(OUTPUT_LAYER_NAMES['monochrome'])]
+    ch_count = [len(OUTPUT_LAYER_NAMES['monochrome'])]
 
-    model = Model(layers={
-        'start': make_conv_block(
-            ch_count_start, last_sigmoid=True,
+    layers = {
+        'Monochrome': make_conv_block(
+            ch_count, last_sigmoid=True,
             kernel_size=(5, 5), padding=2, **kwargs),
-    }, relations={
-        'start': 0,
-        0: 'start',
-    }, loss=SegmentationDice2D())
+    }
+    relations = {
+        'Monochrome': 0,
+        0: 'Monochrome',
+    }
+
+    model = Model(
+        layers=layers, relations=relations,
+        loss=SegmentationDice2D())
 
     return model
 
 
-def make_model(input_shape, optimizer=None):
+def make_paragraph(input_shape, optimizer=None):
     batch_size, height, width, in_channels = input_shape
     optimizer = Adam(lr=1e-2) if optimizer is None else optimizer
 
@@ -77,81 +98,85 @@ def make_model(input_shape, optimizer=None):
         'trainable': True,
     }
 
-    layer_tags = [
-        layer_tag for layer_tag in OUTPUT_LAYER_TAGS
-        if layer_tag != 'monochrome'
-    ]
-
-    ch_count_start = [len(OUTPUT_LAYER_NAMES['monochrome'])]
     ch_count_downs = [
-        [64], [64],
+        None, [1], [1], [1], [1],
     ]
-    ch_count_down_bottom = [128]
-    ch_count_bottom = [64, 32, 16, 8]
     ch_count_ups = [
-        [32, 16, 8], [32, 16, 8],
+        None, [1], [1], [1], [1],
     ]
-    ch_count_up_end = [8]
-    ch_count_ends = {
-        layer_tag: [len(OUTPUT_LAYER_NAMES[layer_tag])]
-        for layer_tag in layer_tags
-    }
-
-    assert len(ch_count_downs) == len(ch_count_ups) > 0
-    depth = len(ch_count_downs)
+    ch_count_end = [len(OUTPUT_LAYER_NAMES['paragraph'])]
 
     layers = {
-        'start': make_conv_block(
-            ch_count_start, last_sigmoid=True,
+        **{
+            f'down_{i}': make_conv_block(
+                ch_count_downs[i],
+                kernel_size=(5, 5), padding=2, stride=2, **kwargs)
+            for i in range(1, len(ch_count_downs))
+        },
+        **{
+            f'up_{i}': make_single_up(
+                ch_count_ups[i],
+                kernel_size=(5, 5), padding=2, **kwargs)
+            for i in range(1, len(ch_count_ups))
+        },
+        'end': make_conv_block(
+            ch_count_end,
             kernel_size=(5, 5), padding=2, **kwargs),
-        **{
-            f'down_{i + 1}': make_conv_block(
-                ch_count_downs[i], kernel_size=(3, 3), padding=1, stride=2, **kwargs)
-            for i in range(depth)
-        },
-        'down_bottom': make_conv_block(
-            ch_count_down_bottom, kernel_size=(3, 3), padding=1, stride=2, **kwargs),
-        'bottom': make_conv_block(
-            ch_count_bottom, kernel_size=(3, 3), padding=1, **kwargs),
-        **{
-            f'up_{i + 1}': make_up(
-                ch_count_ups[i], kernel_size=(3, 3), padding=1, **kwargs)
-            for i in range(depth)
-        },
-        'up_end': make_up(
-            ch_count_up_end, kernel_size=(3, 3), padding=1, **kwargs),
-        **{
-            f'end_{layer_tag}': make_conv_block(
-                ch_count_ends[layer_tag], last_sigmoid=True,
-                kernel_size=(3, 3), padding=1, **kwargs)
-            for layer_tag in layer_tags
-        }
     }
-
     relations = {
-        'start': 0,
-        0: 'start',
-        'down_1': 'start',
+        'down_1': 0,
         **{
             f'down_{i + 1}': f'down_{i}'
-            for i in range(1, depth)
+            for i in range(1, len(ch_count_downs) - 1)
         },
-        'down_bottom': f'down_{depth}',
-        'bottom': 'down_bottom',
-        f'up_{depth}': [f'down_{depth}', 'bottom'],
+        f'up_{len(ch_count_ups) - 1}': f'down_{len(ch_count_downs) - 1}',
         **{
-            f'up_{i}': [f'down_{i}', f'up_{i + 1}']
-            for i in range(1, depth)
+            f'up_{i}': f'up_{i + 1}'
+            for i in range(1, len(ch_count_ups) - 1)
         },
-        'up_end': ['start', 'up_1'],
-        **{
-            f'end_{layer_tag}': 'up_end'
-            for layer_tag in layer_tags
-        },
-        **{
-            OUTPUT_LAYER_TAGS_IDS[layer_tag]: f'end_{layer_tag}'
-            for layer_tag in layer_tags
-        },
+        'end': 'up_1',
+        0: 'end',
     }
 
-    return Model(layers=layers, relations=relations, loss=SegmentationDice2D())
+    model = wrap(
+        'Paragraph', Model(layers=layers, relations=relations),
+        loss=SegmentationDice2D())
+
+    return model
+
+
+def make_model_system(input_shape, optimizer=None, progress_tracker=None, weights=None):
+    monochrome = ModelComponent(
+        'Monochrome', make_monochrome(input_shape, optimizer),
+        'X', 'monochrome_y', 'monochrome_pred')
+    monochrome_output_shapes = monochrome.model.get_output_shapes(input_shape)[0]
+
+    paragraph = ModelComponent(
+        'Paragraph', make_paragraph(monochrome_output_shapes, optimizer),
+        'monochrome_pred', 'paragraph_y', 'paragraph_pred')
+
+    model_system = ModelSystem([
+        monochrome,
+        paragraph,
+    ])
+
+    models = {
+        'Monochrome': monochrome.model,
+        'Paragraph': paragraph.model,
+    }
+    for model_name, model in models.items():
+        model.initialize(input_shape)
+        if progress_tracker is not None:
+            model.init_progress_tracker(progress_tracker, model_name)
+        if weights is not None:
+            model.set_weights(weights)
+
+    return model_system, models
+
+
+def make_context(X, ys):
+    context = {
+        'X': X,
+        **{f'{tag}_y': ys[i] for i, tag in enumerate(OUTPUT_LAYER_TAGS)},
+    }
+    return context

@@ -6,14 +6,133 @@ import numpy as np
 from tqdm import tqdm
 
 from ..nn.gpu import CP
+from .model import make_context
+
+
+class Losses:
+    def __init__(self, model_names, outputs_cnts):
+        self.model_names = model_names
+        self.outputs_cnts = outputs_cnts
+        self.train_prev_losses = self._new_losses(float('inf'))
+        self.val_best_losses = self._new_losses(float('inf'))
+        self.val_prev_losses = self._new_losses(float('inf'))
+        self.train_losses = None
+        self.val_losses = None
+        self.best_loss_epoch = {name: 0 for name in self.model_names}
+
+    def reset(self):
+        self.train_losses = self._new_losses(0)
+        self.val_losses = self._new_losses(0)
+
+    def _new_losses(self, value):
+        return {
+            name: [value for _ in range(self.outputs_cnts[name])]
+            for name in self.model_names
+        }
+
+    def get_better_weights(self, epoch):
+        result = [
+            name for name in self.model_names
+            if (np.mean(self.val_losses[name]) <
+                np.mean(self.val_best_losses[name]))
+        ]
+        for name in result:
+            self.val_best_losses[name] = self.val_losses[name]
+            self.best_loss_epoch[name] = epoch
+        return result
+
+    def next(self):
+        self.train_prev_losses = self.train_losses
+        self.val_prev_losses = self.val_losses
+
+    def train(self, update):
+        for name in self.model_names:
+            out_losses = update[name]['output_losses']
+            for i in range(self.outputs_cnts[name]):
+                self.train_losses[name][i] += out_losses[i]
+
+    def validation(self, update):
+        for name in self.model_names:
+            out_losses = update[name]['output_losses']
+            for i in range(self.outputs_cnts[name]):
+                self.val_losses[name][i] += out_losses[i]
+
+    def normalize(self, train_dataset_size, validation_dataset_size):
+        for name in self.model_names:
+            for i in range(self.outputs_cnts[name]):
+                self.train_losses[name][i] /= train_dataset_size
+                self.val_losses[name][i] /= validation_dataset_size
+
+    def print(self, left_margin=0):
+        train_values, val_values = [], []
+        tmp_train_diffs, tmp_val_diffs = [], []
+        train_diffs, val_diffs = [], []
+
+        for name in self.model_names:
+            train_values.append([
+                f'{train_loss: }'
+                for train_loss in self.train_losses[name]
+            ])
+            val_values.append([
+                f'{val_loss: }'
+                for val_loss in self.val_losses[name]
+            ])
+            tmp_train_diffs.append([
+                self.train_losses[name][i] - self.train_prev_losses[name][i]
+                for i in range(self.outputs_cnts[name])
+            ])
+            train_diffs.append([f'{diff:+}' for diff in tmp_train_diffs[-1]])
+            tmp_val_diffs.append([
+                self.val_losses[name][i] - self.val_prev_losses[name][i]
+                for i in range(self.outputs_cnts[name])
+            ])
+            val_diffs.append([f'{diff:+}' for diff in tmp_val_diffs[-1]])
+
+        avg_train_diffs = [f'{np.mean(diffs):+}' for diffs in tmp_train_diffs]
+        avg_val_diffs = [f'{np.mean(diffs):+}' for diffs in tmp_val_diffs]
+
+        column_widths = []
+        for i, name in enumerate(self.model_names):
+            widths = []
+            for j in range(self.outputs_cnts[name]):
+                l1 = len(train_values[i][j])
+                l2 = len(val_values[i][j])
+                l3 = len(train_diffs[i][j])
+                l4 = len(val_diffs[i][j])
+                widths.append(max(l1, l2, l3, l4))
+            l5 = len(avg_train_diffs[i])
+            l6 = len(avg_val_diffs[i])
+            column_widths.append(max(len(name), sum(widths), l5, l6))
+            for arr in [train_values, val_values, train_diffs, val_diffs]:
+                arr[i] = ' '.join(
+                    str(val).ljust(widths[j])
+                    for j, val in enumerate(arr[i]))
+
+        result = [
+            [name for name in self.model_names],
+            train_values, train_diffs, avg_train_diffs,
+            val_values, val_diffs, avg_val_diffs]
+        for i in range(len(result)):
+            result[i] = ' | '.join(
+                val.ljust(column_widths[i]) for i, val in enumerate(result[i]))
+
+        lm = ' ' * left_margin
+        print(lm + f'Models:            {result[0]}')
+        print(lm + f'Train loss:        {result[1]}')
+        print(lm + f'  Loss change:     {result[2]}')
+        print(lm + f'  Avg loss change: {result[3]}')
+        print(lm + f'Validation loss:   {result[4]}')
+        print(lm + f'  Loss change:     {result[5]}')
+        print(lm + f'  Avg loss change: {result[6]}')
 
 
 class Trainer:
-    def __init__(self, model, train_dataset, validation_dataset,
+    def __init__(self, model_system, models, train_dataset, validation_dataset,
                  progress_tracker, show_progress_bar=False,
                  optimizer=None, learning_rate_step=0.995,
                  save_weights_func=None, save_pictures_func=None):
-        self.model = model
+        self.model_system = model_system
+        self.models = models
         self.train_dataset = train_dataset
         self.validation_dataset = validation_dataset
         self.progress_tracker = progress_tracker
@@ -24,13 +143,21 @@ class Trainer:
         self.save_pictures_func = save_pictures_func
 
     def train(self, num_epochs):
-        outputs_cnt = self.model.get_outputs_count()
-        train_prev_losses = [float('inf') for _ in range(outputs_cnt)]
-        val_best_losses = [float('inf') for _ in range(outputs_cnt)]
-        val_prev_losses = [float('inf') for _ in range(outputs_cnt)]
-        best_loss_epoch = None
+        model_names = list(self.models.keys())
+        outputs_cnts = {
+            name: model.get_outputs_count()
+            for name, model in self.models.items()
+        }
+        losses = Losses(model_names, outputs_cnts)
 
-        best_weights = last_weights = self.model.get_weights()
+        def get_weights():
+            return {
+                name: weights
+                for model in self.models.values()
+                for name, weights in model.get_weights().items()
+            }
+
+        best_weights = last_weights = get_weights()
         reload_attempts = 0
 
         epoch = 1
@@ -53,8 +180,7 @@ class Trainer:
 
             ts = dt.now()
 
-            train_losses = [0 for _ in range(outputs_cnt)]
-            validation_losses = [0 for _ in range(outputs_cnt)]
+            losses.reset()
 
             if self.show_progress_bar:
                 def pb(iterable, *args, **kwargs):
@@ -69,25 +195,28 @@ class Trainer:
                 self.progress_tracker.message('training')
 
                 X, ys = self.train_dataset.get(i)
-                loss = self.model.train(X, ys)
-
-                out_losses = loss['output_losses']
-                for j in range(outputs_cnt):
-                    train_losses[j] += out_losses[j]
+                context = make_context(X, ys)
+                self.model_system.train(context)
+                losses.train(context['losses'])
 
                 ps = None
                 if self.save_pictures_func is not None:
-                    ps = self.model.predict(X)
+                    self.model_system.predict(context)
+                    tmp_ps = context['prediction']
+                    ps = []
+                    for name in model_names:
+                        ps.extend(tmp_ps[name])
                     self.save_pictures_func(epoch, 'train', i, X, ys, ps)
 
                 self.progress_tracker.message('train_iteration', {
                     'current': i + 1, 'total': iters_cnt
                 })
 
-                del X, ys, ps
+                del X, ys, ps, context
                 gc.collect()
 
             y_min, y_mean, y_max = None, None, None
+            p_min, p_mean, p_max = None, None, None
 
             iters_cnt = len(self.validation_dataset)
             assert iters_cnt > 0, 'Validation dataset must have at least 1 element'
@@ -96,16 +225,18 @@ class Trainer:
                 self.progress_tracker.message('validating')
 
                 X, ys = self.validation_dataset.get(i)
-                loss = self.model.test(X, ys)
-
-                out_losses = loss['output_losses']
-                for j in range(outputs_cnt):
-                    validation_losses[j] += out_losses[j]
+                context = make_context(X, ys)
+                self.model_system.test(context)
+                losses.validation(context['losses'])
 
                 ps = None
                 if self.save_pictures_func is not None or i == iters_cnt - 1:
                     self.progress_tracker.message('disable_status_update')
-                    ps = self.model.predict(X)
+                    self.model_system.predict(context)
+                    tmp_ps = context['prediction']
+                    ps = []
+                    for name in model_names:
+                        ps.extend(tmp_ps[name])
                     self.progress_tracker.message('enable_status_update')
                 if self.save_pictures_func is not None:
                     self.save_pictures_func(epoch, 'validation', i, X, ys, ps)
@@ -122,92 +253,49 @@ class Trainer:
                     'current': i + 1, 'total': iters_cnt
                 })
 
-                del X, ys, ps
+                del X, ys, ps, context
                 gc.collect()
 
-            for i in range(outputs_cnt):
-                train_losses[i] /= len(self.train_dataset)
-                validation_losses[i] /= len(self.validation_dataset)
+            losses.normalize(len(self.train_dataset), len(self.validation_dataset))
 
             if self.optimizer is not None:
-                self.optimizer.lr *= self.learning_rate_step
+                reload_attempts += 1
+                self.optimizer.lr *= self.learning_rate_step ** reload_attempts
 
-                if self.model.nan_weights():
+                if any(model.nan_weights() for model in self.models.values()):
                     if reload_attempts < 10:
                         print(f'NaN value found in weights, loading last weights\n')
                         self.model.set_weights(last_weights)
-                        reload_attempts += 1
                     else:
                         print(f'Too many attempts, loading last best weights\n')
                         self.model.set_weights(best_weights)
+                        reload_attempts = 0
                     continue
 
-            elif self.model.nan_weights():
+            elif any(model.nan_weights() for model in self.models.values()):
                 raise ValueError(
                     f'NaN value found in weights, but no optimizer provided. '
                     f'Provide optimizer and learning_rate_step, so '
                     f'learning rate could be decreased to try avoiding NaN values')
 
-            train_losses_str = [
-                f'{train_loss: }' for train_loss in train_losses
-            ]
-            tmp_train_loss_diffs = [
-                train_losses[i] - train_prev_losses[i]
-                for i in range(outputs_cnt)
-            ]
-            avg_train_loss_diffs = np.mean(tmp_train_loss_diffs)
-            train_loss_diffs = []
-            for i in range(outputs_cnt):
-                round_cnt = len(train_losses_str[i].split('.')[1])
-                diff = round(tmp_train_loss_diffs[i], round_cnt)
-                diff = f'{diff:+}'.ljust(len(train_losses_str[i]))
-                train_loss_diffs.append(diff)
-            train_losses_str = ' '.join(train_losses_str)
-            train_loss_diffs = ' '.join(train_loss_diffs)
-            train_prev_losses = train_losses
-
-            validation_losses_str = [
-                f'{validation_loss: }' for validation_loss in validation_losses
-            ]
-            tmp_val_loss_diffs = [
-                validation_losses[i] - val_prev_losses[i]
-                for i in range(outputs_cnt)
-            ]
-            avg_val_loss_diffs = np.mean(tmp_val_loss_diffs)
-            val_loss_diffs = []
-            for i in range(outputs_cnt):
-                round_cnt = len(validation_losses_str[i].split('.')[1])
-                diff = round(tmp_val_loss_diffs[i], round_cnt)
-                diff = f'{diff:+}'.ljust(len(validation_losses_str[i]))
-                val_loss_diffs.append(diff)
-            validation_losses_str = ' '.join(validation_losses_str)
-            val_loss_diffs = ' '.join(val_loss_diffs)
-            val_prev_losses = validation_losses
-
-            print(f'  Train loss:      {train_losses_str}')
-            print(f'    Loss change:   {train_loss_diffs}')
-            print(f'    Average loss change: {avg_train_loss_diffs:+}')
-            print(f'  Validation loss: {validation_losses_str}')
-            print(f'    Loss change:   {val_loss_diffs}')
-            print(f'    Average loss change: {avg_val_loss_diffs:+}')
+            losses.print(left_margin=2)
             print(f'  Statistics (y :: p):')
             print(f'    min:  {y_min} :: {p_min}')
             print(f'    mean: {y_mean} :: {p_mean}')
             print(f'    max:  {y_max} :: {p_max}')
 
-            if np.mean(validation_losses) < np.mean(val_best_losses):
-                best_weights = self.model.get_weights()
+            better_weights = losses.get_better_weights(epoch)
+            if any(better_weights):
                 if self.save_weights_func:
-                    print(f'  Saving model weights')
-                    self.save_weights_func()
-                best_loss_epoch = epoch
-                val_best_losses = validation_losses
+                    print(f'  Saving weights for ' + ', '.join(better_weights))
+                    self.save_weights_func(better_weights)
 
             print(f'Time required: {dt.now() - ts}')
             print(f'\n')
 
-            last_weights = self.model.get_weights()
+            last_weights = get_weights()
             epoch += 1
             reload_attempts = 0
+            losses.next()
 
-        return val_best_losses, best_loss_epoch
+        return losses.val_best_losses, losses.best_loss_epoch
