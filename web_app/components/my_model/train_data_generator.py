@@ -1,4 +1,5 @@
 import os
+import random
 from multiprocessing import Process, Queue
 
 import numpy as np
@@ -8,10 +9,12 @@ from .constants import INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES
 
 
 def generate_picture(width, height):
-    bg_color = (255, 255, 255, 255)
+    bg_color = tuple(random.randint(1, 255) for _ in range(4))
     layers = LayeredImage(width, height, bg_color)
     for i in range(30):
         layers.add_paragraph(random_text(), random_font(16, 16))
+    layers = layers.rotate(random.uniform(0, 360))
+    layers = layers.make_divisible_by(16, 16)
     return layers.get_raw()
 
 

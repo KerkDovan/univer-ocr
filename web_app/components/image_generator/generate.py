@@ -74,6 +74,31 @@ class LayeredImage:
     def get_demo(self):
         return self.demo
 
+    def rotate(self, angle):
+        for images_set in [self.layers, self.demo]:
+            for name, image in images_set.items():
+                bg_color = self.bg_color if image.mode == 'RGBA' else 0
+                rot = image.convert('RGBA').rotate(
+                    angle, resample=Image.BILINEAR, expand=True)
+                fff = Image.new('RGBA', rot.size, bg_color)
+                res = Image.composite(rot, fff, rot).convert(image.mode)
+                images_set[name] = res
+        self.width, self.height = self.layers['image'].size
+        return self
+
+    def make_divisible_by(self, x, y):
+        to_add_x = x - self.width % x
+        to_add_y = y - self.height % y
+        new_size = (self.width + to_add_x, self.height + to_add_y)
+        pos = (to_add_x // 2, to_add_y // 2)
+        for images_set in [self.layers, self.demo]:
+            for name, image in images_set.items():
+                bg_color = self.bg_color if image.mode == 'RGBA' else 0
+                new_image = Image.new(image.mode, new_size, bg_color)
+                new_image.paste(image, pos)
+                images_set[name] = new_image
+        return self
+
     def add_paragraph(self, text, font):
         spacing = font.size // 2
         ascent, descent = font.getmetrics()
