@@ -9,7 +9,7 @@ from ..nn.progress_tracker import ProgressTracker
 from .constants import MODEL_WEIGHTS_FILE_PATH, TRAIN_PROGRESS_PATH
 from .datasets import (
     RandomSelectDataset, decode_X, decode_ys, save_pictures, train_dataset, validation_dataset)
-from .model import make_context, make_model_system
+from .model import make_model_system
 from .trainer import Trainer
 
 emitter = None
@@ -49,8 +49,11 @@ def emit_status(status_type, status_data=None):
         status_type = 'forward_backward'
         status_data = {
             name: {
-                e['name']: {'done': e['done'], 'time': str(e['time'])}
-                for e in events}
+                e['name']: {
+                    'counter': e['counter'],
+                    'done': e['done'],
+                    'time': str(e['time'])
+                } for e in events}
             for name, events in status_data.items()
         }
     status = {'type': status_type}

@@ -9,20 +9,25 @@ class Event:
         self.started = None
         self.stopped = None
         self.time = None
+        self.counter = 0
 
     def start(self):
+        self.done = False
         self.started = datetime.now()
 
     def stop(self):
         self.stopped = datetime.now()
-        self.time = self.stopped - self.started
+        time = self.stopped - self.started
+        self.time = time if self.time is None else self.time + time
         self.done = True
+        self.counter += 1
 
     def reset(self):
         self.done = False
         self.started = None
         self.stopped = None
         self.time = None
+        self.counter = 0
 
     def to_dict(self):
         return {
@@ -31,6 +36,7 @@ class Event:
             'started': self.started,
             'stopped': self.stopped,
             'time': self.time,
+            'counter': self.counter,
         }
 
 
@@ -72,7 +78,8 @@ class ProgressTracker(BaseProgressTracker):
         }
 
     def start_tracking(self, name, event):
-        self.layers[name][event] = Event(event)
+        if event not in self.layers[name]:
+            self.layers[name][event] = Event(event)
         self.layers[name][event].start()
         self.handler(event, self.get_summary())
 
@@ -90,7 +97,7 @@ class ProgressTracker(BaseProgressTracker):
                 event.reset()
 
 
-def track_this(event):
+def track_method(event):
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
@@ -99,4 +106,17 @@ def track_this(event):
             self.progress_tracker.stop_tracking(self.name, event)
             return result
         return wrapper
+    return decorator
+
+
+def track_function(name, event, progress_tracker):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            progress_tracker.start_tracking(name, event)
+            result = func(*args, **kwargs)
+            progress_tracker.stop_tracking(name, event)
+            return result
+        return wrapper
+    progress_tracker.register_layer(name)
     return decorator

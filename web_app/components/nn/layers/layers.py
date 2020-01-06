@@ -4,7 +4,7 @@ from ..gpu import CP
 from ..help_func import make_list_if_not
 from ..initializers import kaiming_uniform
 from ..optimizers import Adam
-from ..progress_tracker import BaseProgressTracker, track_this
+from ..progress_tracker import BaseProgressTracker, track_method
 
 
 class Param:
@@ -53,7 +53,7 @@ class BaseLayer:
         self.inputs_count = len(self.input_shapes)
         self.is_initialized = True
 
-    @track_this('forward')
+    @track_method('forward')
     def forward(self, inputs):
         assert self.is_initialized, 'You must initialize() layer before calling forward() method'
         inputs = make_list_if_not(inputs)
@@ -62,7 +62,7 @@ class BaseLayer:
             result.append(self._forward(X, mem_id))
         return result
 
-    @track_this('backward')
+    @track_method('backward')
     def backward(self, grads):
         grads = make_list_if_not(grads)
         result = []
@@ -176,7 +176,7 @@ class BaseLayerGPU(BaseLayer):
         self._forward_gpu = self._make_forward_gpu()
         self._backward_gpu = self._make_backward_gpu()
 
-    @track_this('forward')
+    @track_method('forward')
     def forward(self, inputs):
         assert self.is_initialized, 'You must initialize() layer before calling forward() method'
         inputs = make_list_if_not(inputs)
@@ -186,7 +186,7 @@ class BaseLayerGPU(BaseLayer):
             result.append(_forward(self, X, mem_id))
         return result
 
-    @track_this('backward')
+    @track_method('backward')
     def backward(self, grads):
         grads = make_list_if_not(grads)
         result = []
@@ -243,7 +243,7 @@ class Concat(BaseLayer):
         self.axis = axis
         self.is_initialized = self.inputs_count is not None
 
-    @track_this('forward')
+    @track_method('forward')
     def forward(self, inputs):
         if not isinstance(inputs, list):
             self._mem = [inputs.shape]
@@ -252,7 +252,7 @@ class Concat(BaseLayer):
         result = [CP.cp.concatenate(inputs, axis=self.axis)]
         return result
 
-    @track_this('backward')
+    @track_method('backward')
     def backward(self, grads):
         grads = make_list_if_not(grads)
         shapes = self._mem

@@ -1,7 +1,7 @@
 from .help_func import make_list_if_not
 from .layers import BaseLayer
 from .losses import SoftmaxCrossEntropy
-from .progress_tracker import track_this
+from .progress_tracker import track_method
 
 
 class BaseModel(BaseLayer):
@@ -160,7 +160,7 @@ class Model(BaseModel):
     def __getitem__(self, key):
         return self.layers[key]
 
-    @track_this('forward')
+    @track_method('forward')
     def forward(self, inputs):
         inputs = make_list_if_not(inputs)
         if not self.is_initialized:
@@ -198,7 +198,7 @@ class Model(BaseModel):
 
         return [outputs[k] for k in range(self.outputs_count)]
 
-    @track_this('backward')
+    @track_method('backward')
     def backward(self, grads):
         grads = make_list_if_not(grads)
         keys_backward = list(self.relations_backward.keys())
