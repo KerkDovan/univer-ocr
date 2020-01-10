@@ -271,8 +271,8 @@ class Convolutional2D(BaseLayerGPU):
             dx_total = CP.cp.zeros_like(X)
             _backward_gpu_kernel_dx[grid_dim, block_dim](self.w.value, grad, dx_total)
 
-            dw_total = CP.cp.zeros((4, 4, *self.w.value.shape))
-            db_total = CP.cp.zeros((4, 4, *self.b.value.shape))
+            dw_total = CP.cp.zeros((16, 16, *self.w.value.shape))
+            db_total = CP.cp.zeros((16, 16, *self.b.value.shape))
             grid_dim, block_dim = self.get_kernel_dims(dw_total, (0, 1, -1))
             _backward_gpu_kernel_dw_db[grid_dim, block_dim](X, grad, dw_total, db_total)
             cuda.synchronize()
