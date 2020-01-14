@@ -1,7 +1,10 @@
 import os
+import signal
 from datetime import datetime as dt
-from multiprocessing import Pool, Queue
+from multiprocessing import Event, Manager, Pool, Process
+from queue import Empty
 from threading import Thread
+from time import sleep
 
 import numpy as np
 from scipy import ndimage
@@ -174,82 +177,195 @@ def interpret(layers):
     return result
 
 
-def get_rotated(mask, arrays):
-    def rotate(arr, angle):
-        return ndimage.rotate(arr, angle, axes=(2, 1))
+def put_to_queue(queue, data):
+    try:
+        queue.put(data)
+    except (BrokenPipeError, EOFError):
+        return
 
-    def func(angle):
-        rotated = rotate(mask, angle)
-        _, region_y, region_x, _ = ndimage.find_objects(rotated)[0]
+
+def get_from_queue(queue):
+    try:
+        return queue.get()
+    except (BrokenPipeError, EOFError):
+        exit(0)
+
+
+def rotate_array(array, angle):
+    return ndimage.rotate(array, angle, axes=(2, 1))
+
+
+class FindObjectHeightInRotated:
+    def __init__(self, manager, done):
+        self.manager = manager
+        self.input_queue = self.manager.Queue()
+        self.output_queue = self.manager.Queue()
+        self.done = done
+        self.worker = Process(
+            target=self._run, daemon=True,
+            args=(self.done, self._func, self.input_queue, self.output_queue))
+
+    def start(self):
+        self.worker.start()
+
+    def stop(self):
+        self.done.set()
+        sleep(0.001)
+
+    def __del__(self):
+        self.stop()
+
+    @staticmethod
+    def _run(done, func, input_queue, output_queue):
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        while not done.is_set():
+            try:
+                args = input_queue.get(True, 0.001)
+            except Empty:
+                continue
+            except (BrokenPipeError, EOFError):
+                break
+            result = func(*args)
+            put_to_queue(output_queue, result)
+
+    @staticmethod
+    def _func(array, angle):
+        rotated = rotate_array(array, angle)
+        _, region_y, _, _ = ndimage.find_objects(rotated)[0]
         return region_y.stop - region_y.start
 
-    low, high = 0.0, 180.0
-    while high - low > 1.0:
-        a = low + (high - low) / 3
-        b = high - (high - low) / 3
-        if func(a) < func(b):
-            high = b
-        else:
-            low = a
 
-    angle = (high + low) / 2
-    rotated_mask = rotate(mask, angle)
-    _, region_y, region_x, _ = ndimage.find_objects(rotated_mask)[0]
+class CropAndRotateSingleParagraph:
+    def __init__(self, manager, workers_count=None):
+        self.manager = manager
+        self.input_queue = self.manager.Queue()
+        self.output_queue = self.manager.Queue()
+        self.workers_count = os.cpu_count() if workers_count is None else workers_count
+        self.done = Event()
+        self.height_finders = [
+            FindObjectHeightInRotated(self.manager, self.done)
+            for _ in range(2 * self.workers_count)
+        ]
+        self.workers = [
+            Process(target=self._run, daemon=True, args=(
+                self.done, self._func, self.input_queue, self.output_queue,
+                self.height_finders[2 * i].input_queue,
+                self.height_finders[2 * i].output_queue,
+                self.height_finders[2 * i + 1].input_queue,
+                self.height_finders[2 * i + 1].output_queue))
+            for i in range(self.workers_count)
+        ]
 
-    result = [
-        rotate(arr, angle)[:, region_y, region_x, :]
-        for arr in arrays
-    ]
+    def start(self):
+        for worker in self.workers:
+            worker.start()
+        for hf in self.height_finders:
+            hf.start()
 
-    return result
+    def stop(self):
+        self.done.set()
+        sleep(0.001)
 
+    def __del__(self):
+        self.stop()
 
-def crop_and_rotate_paragraph(mask, images):
-    _, region_y, region_x, _ = ndimage.find_objects(mask)[0]
-    cropped_mask = mask[:, region_y, region_x, :]
-    cropped_images = [
-        (image * mask)[:, region_y, region_x, :]
-        for image in images
-    ]
-    result = get_rotated(cropped_mask, cropped_images)
-    return result
+    def put(self, label, mask, arrays):
+        put_to_queue(self.input_queue, (label, mask, arrays))
+
+    def map(self, paragraphs):
+        assert isinstance(paragraphs, dict)
+        for label, (mask, arrays) in paragraphs.items():
+            self.put(label, mask, arrays)
+        result = {}
+        counter = 0
+        while not self.done.is_set() and counter < len(paragraphs):
+            try:
+                label, res = self.output_queue.get(True, 0.001)
+            except Empty:
+                continue
+            except (KeyboardInterrupt, BrokenPipeError, EOFError):
+                break
+            result[label] = res
+            counter += 1
+        return result
+
+    @staticmethod
+    def _run(done, func, input_queue, output_queue,
+             a_in_queue, a_out_queue, b_in_queue, b_out_queue):
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        while not done.is_set():
+            try:
+                label, mask, arrays = input_queue.get(True, 0.001)
+            except Empty:
+                continue
+            except (BrokenPipeError, EOFError):
+                break
+            _, region_y, region_x, _ = ndimage.find_objects(mask)[0]
+            cropped_mask = mask[:, region_y, region_x, :]
+            cropped_arrays = [
+                (image * mask)[:, region_y, region_x, :]
+                for image in arrays
+            ]
+            result = func(
+                a_in_queue, a_out_queue, b_in_queue, b_out_queue,
+                cropped_mask, cropped_arrays)
+            put_to_queue(output_queue, (label, result))
+
+    @staticmethod
+    def _func(a_in_queue, a_out_queue, b_in_queue, b_out_queue, mask, arrays):
+        low, high = 0.0, 180.0
+        while high - low > 1.0:
+            a = low + (high - low) / 3
+            b = high - (high - low) / 3
+            put_to_queue(a_in_queue, (mask, a))
+            put_to_queue(b_in_queue, (mask, b))
+            height_a = get_from_queue(a_out_queue)
+            height_b = get_from_queue(b_out_queue)
+            if height_a < height_b:
+                high = b
+            else:
+                low = a
+
+        angle = (high + low) / 2
+        rotated_mask = rotate_array(mask, angle)
+        _, region_y, region_x, _ = ndimage.find_objects(rotated_mask)[0]
+
+        result = [
+            rotate_array(arr, angle)[:, region_y, region_x, :]
+            for arr in arrays
+        ]
+        return result
 
 
 class CropAndRotateParagraphs:
     def __init__(self, workers_count=None):
-        self.input_queue = Queue()
-        self.output_queue = Queue()
-        self.workers_count = os.cpu_count() if workers_count is None else workers_count
+        self.manager = Manager()
         self.timers = {
             'label': dt.now() - dt.now(),
         }
-        self.run_thread = Thread(target=self._run, daemon=True)
-        self.run_thread.start()
+        self.carsp = CropAndRotateSingleParagraph(self.manager, workers_count)
+        self.carsp.start()
+
+    def __del__(self):
+        self.carsp.stop()
 
     def __call__(self, masks, images):
         ts = dt.now()
         labeled_paragraph = label_layer(masks)
         self.timers['label'] += dt.now() - ts
-        self.input_queue.put((masks, images, labeled_paragraph))
-        result = self.output_queue.get()
-        return result
 
-    def _run(self):
-        with Pool(self.workers_count) as pool:
-            while True:
-                masks, images, labeled_paragraph = self.input_queue.get()
-                result = [[None for mask in labeled_paragraph] for image in images]
-                async_res = []
-                for paragraph_id, mask in enumerate(labeled_paragraph):
-                    r = pool.apply_async(
-                        crop_and_rotate_paragraph,
-                        (mask, images))
-                    async_res.append((paragraph_id, r))
-                for paragraph_id, res in async_res:
-                    res = res.get()
-                    for image_id in range(len(images)):
-                        result[image_id][paragraph_id] = res[image_id]
-                self.output_queue.put(result)
+        paragraphs = {
+            paragraph_id: (mask, images)
+            for paragraph_id, mask in enumerate(labeled_paragraph)
+        }
+        rotated = self.carsp.map(paragraphs)
+
+        result = [[None for mask in labeled_paragraph] for image in images]
+        for paragraph_id, res in rotated.items():
+            for image_id in range(len(images)):
+                result[image_id][paragraph_id] = res[image_id]
+
+        return result
 
 
 def crop_and_rotate_line(top_mask, center_mask, bottom_mask, rotation, images):
@@ -271,9 +387,11 @@ def crop_and_rotate_line(top_mask, center_mask, bottom_mask, rotation, images):
 
 class CropAndRotateLines:
     def __init__(self, workers_count=None):
-        self.input_queue = Queue()
-        self.output_queue = Queue()
+        self.manager = Manager()
+        self.input_queue = self.manager.Queue()
+        self.output_queue = self.manager.Queue()
         self.workers_count = os.cpu_count() if workers_count is None else workers_count
+        self.done = Event()
         self.timers = {
             'mask_mean': dt.now() - dt.now(),
             'rearrange': dt.now() - dt.now(),
@@ -281,15 +399,28 @@ class CropAndRotateLines:
         self.run_thread = Thread(target=self._run, daemon=True)
         self.run_thread.start()
 
+    def __del__(self):
+        self.done.set()
+        sleep(0.001)
+
     def __call__(self, masks, arrays):
-        self.input_queue.put((masks, arrays))
-        result = self.output_queue.get()
+        put_to_queue(self.input_queue, (masks, arrays))
+        result = get_from_queue(self.output_queue)
         return result
 
+    @staticmethod
+    def init_worker():
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     def _run(self):
-        with Pool(self.workers_count) as pool:
-            while True:
-                masks, arrays = self.input_queue.get()
+        with Pool(self.workers_count, self.init_worker) as pool:
+            while not self.done.is_set():
+                try:
+                    masks, arrays = self.input_queue.get(True, 0.001)
+                except Empty:
+                    continue
+                except (KeyboardInterrupt, BrokenPipeError, EOFError):
+                    break
 
                 result = [[] for array in arrays]
                 async_res = []
@@ -298,9 +429,12 @@ class CropAndRotateLines:
                         result[array_id].append([])
 
                     ts = dt.now()
-                    top = mask[:, :, :, 0:1] > np.mean(mask[:, :, :, 0:1])
-                    center = mask[:, :, :, 1:2] > np.mean(mask[:, :, :, 1:2])
-                    bottom = mask[:, :, :, 2:3] > np.mean(mask[:, :, :, 2:3])
+                    try:
+                        top = mask[:, :, :, 0:1] > np.mean(mask[:, :, :, 0:1])
+                        center = mask[:, :, :, 1:2] > np.mean(mask[:, :, :, 1:2])
+                        bottom = mask[:, :, :, 2:3] > np.mean(mask[:, :, :, 2:3])
+                    except TypeError:
+                        exit(0)
                     self.timers['mask_mean'] += dt.now() - ts
 
                     ts = dt.now()
@@ -325,4 +459,4 @@ class CropAndRotateLines:
                     for array_id in range(len(arrays)):
                         result[array_id][paragraph_id][line_id] = res[array_id]
 
-                self.output_queue.put(result)
+                put_to_queue(self.output_queue, result)

@@ -89,7 +89,7 @@ def main(*args, **kwargs):
         os.remove(fpath)
 
     try:
-        for workers_count in [1, 2, 4, 8, 16]:
+        for workers_count in [1, 2, 4]:
             benchmark_one(dirpath, workers_count)
 
     except KeyboardInterrupt:
