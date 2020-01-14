@@ -171,7 +171,12 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         if weights is not None:
             model.set_weights(weights)
 
-    return model_system, models
+    names = [
+        'Monochrome',
+        'Paragraph',
+    ]
+
+    return model_system, models, names
 
 
 def make_context(X, ys):

@@ -115,7 +115,7 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
             weights = {}
 
         optimizer = Adam(lr=lr)
-        model_system, models = make_model_system_func(
+        model_system, models, names = make_model_system_func(
             input_shape, optimizer, tracker, weights)
 
         def update_weights_func(models_to_update):
@@ -140,7 +140,7 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
         else:
             save_pictures_func = None
 
-        layer_names = list(models.keys()) + [
+        layer_names = names + [
             layer_name
             for model in models.values()
             for layer_name in model.get_leaf_layers().keys()
