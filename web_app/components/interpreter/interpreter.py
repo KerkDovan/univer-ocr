@@ -2,6 +2,7 @@ import os
 import signal
 from datetime import datetime as dt
 from multiprocessing import Event, Manager, Pool, Process
+from multiprocessing.managers import RemoteError
 from queue import Empty
 from threading import Thread
 from time import sleep
@@ -368,23 +369,6 @@ class CropAndRotateParagraphs:
         return result
 
 
-def crop_and_rotate_line(top_mask, center_mask, bottom_mask, rotation, images):
-    _, top_y, top_x, _ = ndimage.find_objects(top_mask)[0]
-    _, center_y, center_x, _ = ndimage.find_objects(center_mask)[0]
-    _, bottom_y, bottom_x, _ = ndimage.find_objects(bottom_mask)[0]
-    y = slice(min(top_y.start, center_y.start, bottom_y.start),
-              max(top_y.stop, center_y.stop, bottom_y.stop))
-    x = slice(min(top_x.start, center_x.start, bottom_x.start),
-              max(top_x.stop, center_x.stop, bottom_x.stop))
-    result = []
-    for i in range(len(images)):
-        cropped = images[i][:, y, x, :]
-        if rotation is not None:
-            cropped = ndimage.rotate(cropped, rotation, axes=(2, 1))
-        result.append(cropped)
-    return result
-
-
 class CropAndRotateLines:
     def __init__(self, workers_count=None):
         self.manager = Manager()
@@ -395,6 +379,7 @@ class CropAndRotateLines:
         self.timers = {
             'mask_mean': dt.now() - dt.now(),
             'rearrange': dt.now() - dt.now(),
+            'crop_and_rotate': dt.now() - dt.now(),
         }
         self.run_thread = Thread(target=self._run, daemon=True)
         self.run_thread.start()
@@ -421,13 +406,12 @@ class CropAndRotateLines:
                     continue
                 except (KeyboardInterrupt, BrokenPipeError, EOFError):
                     break
+                except RemoteError:
+                    exit(0)
 
-                result = [[] for array in arrays]
-                async_res = []
-                for paragraph_id, (mask, *subarrays) in enumerate(zip(masks, *arrays)):
-                    for array_id in range(len(arrays)):
-                        result[array_id].append([])
-
+                ts = dt.now()
+                async_rearranged = []
+                for mask, *subarrays in zip(masks, *arrays):
                     ts = dt.now()
                     try:
                         top = mask[:, :, :, 0:1] > np.mean(mask[:, :, :, 0:1])
@@ -437,11 +421,23 @@ class CropAndRotateLines:
                         exit(0)
                     self.timers['mask_mean'] += dt.now() - ts
 
-                    ts = dt.now()
-                    top_mask, center_mask, bottom_mask, rotation = rearrange_lines(
-                        label_layer(top), label_layer(center), label_layer(bottom))
-                    self.timers['rearrange'] += dt.now() - ts
+                    r = pool.apply_async(
+                        rearrange_lines,
+                        (label_layer(top), label_layer(center), label_layer(bottom)))
+                    async_rearranged.append(r)
 
+                rearranged = [None for _ in async_rearranged]
+                for i, r in enumerate(async_rearranged):
+                    rearranged[i] = r.get()
+                self.timers['rearrange'] += dt.now() - ts
+
+                ts = dt.now()
+                result = [[] for array in arrays]
+                async_res = []
+                for paragraph_id, subarrays in enumerate(zip(*arrays)):
+                    for array_id in range(len(arrays)):
+                        result[array_id].append([])
+                    top_mask, center_mask, bottom_mask, rotation = rearranged[paragraph_id]
                     for line_id in range(len(top_mask)):
                         for array_id in range(len(arrays)):
                             result[array_id][paragraph_id].append(None)
@@ -450,7 +446,7 @@ class CropAndRotateLines:
                             top_mask[line_id], center_mask[line_id], bottom_mask[line_id],
                             rotation)
                         r = pool.apply_async(
-                            crop_and_rotate_line,
+                            self.func,
                             (*paragraph_data, subarrays))
                         async_res.append((index, r))
 
@@ -458,5 +454,23 @@ class CropAndRotateLines:
                     res = res.get()
                     for array_id in range(len(arrays)):
                         result[array_id][paragraph_id][line_id] = res[array_id]
+                self.timers['crop_and_rotate'] += dt.now() - ts
 
                 put_to_queue(self.output_queue, result)
+
+    @staticmethod
+    def func(top_mask, center_mask, bottom_mask, rotation, images):
+        _, top_y, top_x, _ = ndimage.find_objects(top_mask)[0]
+        _, center_y, center_x, _ = ndimage.find_objects(center_mask)[0]
+        _, bottom_y, bottom_x, _ = ndimage.find_objects(bottom_mask)[0]
+        y = slice(min(top_y.start, center_y.start, bottom_y.start),
+                  max(top_y.stop, center_y.stop, bottom_y.stop))
+        x = slice(min(top_x.start, center_x.start, bottom_x.start),
+                  max(top_x.stop, center_x.stop, bottom_x.stop))
+        result = []
+        for i in range(len(images)):
+            cropped = images[i][:, y, x, :]
+            if rotation is not None:
+                cropped = rotate_array(cropped, rotation)
+            result.append(cropped)
+        return result

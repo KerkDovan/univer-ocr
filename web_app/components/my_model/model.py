@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 
 from ..interpreter import CropAndRotateLines, CropAndRotateParagraphs
@@ -419,7 +421,7 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         ('letter_spacing_y', 'letter_spacing_y_cpu'),
     ])
 
-    crop_and_rotate_paragraphs = CropAndRotateParagraphs(1)
+    crop_and_rotate_paragraphs = CropAndRotateParagraphs(min(4, os.cpu_count()))
 
     @track_function('ParagraphCrop', 'forward', progress_tracker)
     def paragraph_crop_func(context):
@@ -453,7 +455,7 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         (line_label_2, line_label_2_cpu),
     ])
 
-    crop_and_rotate_lines = CropAndRotateLines(1)
+    crop_and_rotate_lines = CropAndRotateLines(min(4, os.cpu_count()))
 
     @track_function('LineCrop', 'forward', progress_tracker)
     def line_crop_func(context):

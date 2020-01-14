@@ -24,6 +24,8 @@ def from_array(array, ch=0):
 
 
 def benchmark_one(dirpath, workers_count):
+    print(f'os.cpu_count() for this machine is {os.cpu_count()}\n')
+
     total_paragraph_crop_time = dt.now() - dt.now()
     total_line_crop_time = dt.now() - dt.now()
     total_save_time = dt.now() - dt.now()
