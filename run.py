@@ -15,7 +15,7 @@ def main(module_name, use_gpu=False, *args, **kwargs):
             import_path = 'web_app.components.my_model.' + module_name
         imported = importlib.import_module(import_path)
         args = [bool_convert(arg) for arg in args]
-        imported.main(use_gpu == 'True' or use_gpu is True, *args, **kwargs)
+        imported.main(str(use_gpu).lower() == 'true', *args, **kwargs)
 
     except Exception as e:
         print(traceback.format_exc())
