@@ -9,17 +9,12 @@ class BaseComponent:
         raise NotImplementedError()
 
 
-class FunctionComponent(BaseComponent):
-    def __init__(self, name, func, *args_selectors, **kwargs_selectors):
-        self.name = name
+class RawFunctionComponent(BaseComponent):
+    def __init__(self, func):
         self.func = func
-        self.args_selectors = args_selectors
-        self.kwargs_selectors = kwargs_selectors
 
     def __call__(self, context):
-        args = [context[v] for v in self.args_selectors]
-        kwargs = {k: context[v] for k, v in self.kwargs_selectors.items()}
-        context[self.name] = self.func(*args, **kwargs)
+        self.func(context)
 
     def train(self, context):
         self(context)
@@ -29,36 +24,105 @@ class FunctionComponent(BaseComponent):
 
     def predict(self, context):
         self(context)
+
+
+class WrappedFunctionComponent(RawFunctionComponent):
+    def __init__(self, name, func, *args_labels, **kwargs_labels):
+        super().__init__(func)
+        self.name = name
+        self.args_labels = args_labels
+        self.kwargs_labels = kwargs_labels
+
+    def __call__(self, context):
+        args = [context[v] for v in self.args_labels]
+        kwargs = {k: context[v] for k, v in self.kwargs_labels.items()}
+        context[self.name] = self.func(*args, **kwargs)
+
+
+class BaseSelector:
+    def __init__(self):
+        self.context = None
+
+    def __call__(self, context):
+        self.context = context
+
+    def get(self):
+        raise NotImplementedError()
+
+    def put(self, pred):
+        raise NotImplementedError()
+
+
+class StringSelector(BaseSelector):
+    def __init__(self, X_label, y_label, pred_label):
+        super().__init__()
+        self.X_label = X_label
+        self.y_label = y_label
+        self.pred_label = pred_label
+
+    def get(self):
+        yield self.context[self.X_label], self.context[self.y_label]
+
+    def put(self, pred):
+        self.context[self.pred_label] = pred
+
+
+class IterableSelector(BaseSelector):
+    def __init__(self, X_label, y_label, pred_label):
+        super().__init__()
+        self.X_label = X_label
+        self.y_label = y_label
+        self.pred_label = pred_label
+
+    def get(self):
+        for X, y in zip(self.context[self.X_label], self.context[self.y_label]):
+            yield X, y
+
+    def put(self, pred):
+        if self.pred_label not in self.context.keys():
+            self.context[self.pred_label] = []
+        self.context[self.pred_label].append(pred)
 
 
 class ModelComponent(BaseComponent):
-    def __init__(self, name, model, X_selector, y_selector, pred_selector):
+    def __init__(self, name, model, selector):
         self.name = name
         self.model = model
-        self.X_selector = X_selector
-        self.y_selector = y_selector
-        self.pred_selector = pred_selector
+        self.selector = selector
 
     def train(self, context):
-        context['losses'][self.name] = self.model.train(
-            context[self.X_selector], context[self.y_selector])
-        context[self.pred_selector] = [
-            self.model.layers_outputs[k]
-            for k in range(self.model.outputs_count)]
+        self.selector(context)
+        for X, y in self.selector.get():
+            losses = self.model.train(X, y)
+            if self.name not in context['losses']:
+                context['losses'][self.name] = losses
+            else:
+                for k, v in losses.items():
+                    context['losses'][self.name][k] += v
+            self.selector.put([
+                self.model.layers_outputs[k]
+                for k in range(self.model.outputs_count)])
 
     def test(self, context):
-        context['losses'][self.name] = self.model.test(
-            context[self.X_selector], context[self.y_selector])
-        context[self.pred_selector] = [
-            self.model.layers_outputs[k]
-            for k in range(self.model.outputs_count)]
+        self.selector(context)
+        for X, y in self.selector.get():
+            losses = self.model.test(X, y)
+            if self.name not in context['losses']:
+                context['losses'][self.name] = losses
+            else:
+                for k, v in losses.items():
+                    context['losses'][self.name][k] += v
+            self.selector.put([
+                self.model.layers_outputs[k]
+                for k in range(self.model.outputs_count)])
 
     def predict(self, context):
-        context['prediction'][self.name] = self.model.predict(
-            context[self.X_selector])
-        context[self.pred_selector] = [
-            self.model.layers_outputs[k]
-            for k in range(self.model.outputs_count)]
+        self.selector(context)
+        for X, _ in self.selector.get():
+            context['prediction'][self.name] = self.model.predict(X)
+            self.selector.put([
+                self.model.layers_outputs[k]
+                for k in range(self.model.outputs_count)])
 
 
 class ModelSystem:

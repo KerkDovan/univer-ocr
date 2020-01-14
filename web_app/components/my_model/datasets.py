@@ -16,14 +16,14 @@ from .train_data_generator import generate_picture
 
 def encode_X(image):
     X = np.asarray(image)
-    X = np.reshape(X, (1, *X.shape)) / 255
+    X = np.reshape(X, (1, *X.shape, 1)) / 255
     return X
 
 
 def decode_X(X):
     if isinstance(X, list):
         X = X[0]
-    X = CP.asnumpy(X[0] * 255).astype(np.uint8)
+    X = CP.asnumpy(X[0, :, :, 0] * 255).astype(np.uint8)
     image = Image.fromarray(X)
     return image
 
@@ -42,25 +42,34 @@ def encode_ys(images):
     return ys
 
 
+def decode_y(y, normalize=False):
+    pred_images = []
+    thresholded_images = []
+    y = CP.asnumpy(y)
+    y = [y[0, :, :, i] for i in range(y.shape[-1])]
+    for yi in y:
+        if normalize:
+            yi -= np.min(yi)
+            max_val = np.max(yi)
+            if not np.isclose(max_val, 0):
+                yi /= max_val
+        cm = np.mean(yi)
+        thresholded = ((yi >= cm) * 255).astype(np.uint8)
+        yi = (yi * 255).astype(np.uint8)
+        pred_image = Image.fromarray(yi)
+        thresholded_image = Image.fromarray(thresholded)
+        pred_images.append(pred_image)
+        thresholded_images.append(thresholded_image)
+    return pred_images, thresholded_images
+
+
 def decode_ys(ys, normalize=False):
     pred_images = []
     thresholded_images = []
     for y in ys:
-        y = CP.asnumpy(y)
-        y = [y[0, :, :, i] for i in range(y.shape[-1])]
-        for yi in y:
-            if normalize:
-                yi -= np.min(yi)
-                max_val = np.max(yi)
-                if not np.isclose(max_val, 0):
-                    yi /= max_val
-            cm = np.mean(yi)
-            thresholded = ((yi >= cm) * 255).astype(np.uint8)
-            yi = (yi * 255).astype(np.uint8)
-            pred_image = Image.fromarray(yi)
-            thresholded_image = Image.fromarray(thresholded)
-            pred_images.append(pred_image)
-            thresholded_images.append(thresholded_image)
+        p, th = decode_y(y, normalize)
+        pred_images.extend(p)
+        thresholded_images.extend(th)
     return pred_images, thresholded_images
 
 
@@ -92,7 +101,7 @@ class Dataset(BaseDataset):
             self.dirpath / f'{idx}_{layer_name}.png'
             for layer_name in OUTPUT_LAYER_NAMES_PLAIN
         ]
-        X_image = Image.open(X_path)
+        X_image = Image.open(X_path).convert('L')
         y_images = [Image.open(y_path) for y_path in y_paths]
         return X_image, y_images
 
@@ -107,7 +116,7 @@ class GeneratorDataset(BaseDataset):
         width = self.width if width is None else width
         height = self.height if height is None else height
         picture = generate_picture(width, height)
-        X_image = picture[INPUT_LAYER_NAME]
+        X_image = picture[INPUT_LAYER_NAME].convert('L')
         y_images = [picture[layer_name] for layer_name in OUTPUT_LAYER_NAMES_PLAIN]
         return X_image, y_images
 

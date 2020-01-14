@@ -66,6 +66,30 @@
             "program": "${workspaceRoot}/train.py",
             "args": ["True", "False", "False", "False"],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Train Neural Network - GPU in console mode with saving progress",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/train.py",
+            "args": ["True", "True", "True", "True"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Train Neural Network - GPU in website mode with saving progress",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/train.py",
+            "args": ["True", "False", "False", "True"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Crop and Rotate Benchmark",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/run.py",
+            "args": ["crop_and_rotate_benchmark"],
+            "console": "integratedTerminal"
         }
     ]
 }

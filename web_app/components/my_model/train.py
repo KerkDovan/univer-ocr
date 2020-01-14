@@ -8,7 +8,7 @@ from ..nn.optimizers import Adam
 from ..nn.progress_tracker import ProgressTracker
 from .constants import MODEL_WEIGHTS_FILE_PATH, TRAIN_PROGRESS_PATH
 from .datasets import (
-    RandomSelectDataset, decode_X, decode_ys, save_pictures, train_dataset, validation_dataset)
+    RandomSelectDataset, decode_X, decode_y, decode_ys, train_dataset, validation_dataset)
 from .model import make_model_system
 from .trainer import Trainer
 
@@ -130,12 +130,54 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
             json.dump(weights, open(model_weights_file, 'w'), separators=(',', ':'))
 
         if save_train_progress:
-            def save_pictures_func(epoch, phase, index, X, y, p):
-                X_image = decode_X(X)
-                y_images, _ = decode_ys(y)
-                pred_images, th_images = decode_ys(p)
-                save_pictures(train_progress_path, X_image, y_images, pred_images, th_images,
-                              f'{epoch}_{phase}_{index}')
+            def save_pictures_func(epoch, phase, index, context):
+                def save(name, X, y, pred, th, paragraph_id=None, line_id=None):
+                    sp = TRAIN_PROGRESS_PATH / f'{name}'
+                    sp.mkdir(parents=True, exist_ok=True)
+                    prefix = f'{epoch}_{phase}_{index}_'
+                    paragraph_id = '' if paragraph_id is None else f'{paragraph_id}_'
+                    line_id = '' if line_id is None else f'{line_id}_'
+                    for i in range(len(X)):
+                        X[i].save(sp / f'{prefix}{paragraph_id}{line_id}1_{i}_1_X.png')
+                    for i in range(len(y)):
+                        y[i].save(sp / f'{prefix}{paragraph_id}{line_id}2_{i}_2_y.png')
+                        pred[i].save(sp / f'{prefix}{paragraph_id}{line_id}2_{i}_3_pred.png')
+                        th[i].save(sp / f'{prefix}{paragraph_id}{line_id}2_{i}_4_th.png')
+
+                def delist(lst):
+                    return [x[0] for x in lst]
+
+                X = [decode_X(context['X'])]
+                monochrome_y, _ = decode_y(context['monochrome_y'])
+                monochrome_pred, monochrome_th = decode_ys(context['monochrome_pred'])
+                save('monochrome', X, monochrome_y, monochrome_pred, monochrome_th)
+
+                paragraph_y, _ = decode_y(context['paragraph_y'])
+                paragraph_pred, paragraph_th = decode_ys(context['paragraph_pred'])
+                save('paragraph', monochrome_pred, paragraph_y, paragraph_pred, paragraph_th)
+
+                c1_m_y = context['cropped_1_monochrome_y']
+                c1_l_y = context['cropped_1_line_y']
+                c1_l_pred = delist(context['cropped_1_line_pred'])
+
+                for paragraph_id in range(len(c1_m_y)):
+                    line_X, _ = decode_y(c1_m_y[paragraph_id])
+                    line_y, _ = decode_y(c1_l_y[paragraph_id])
+                    line_pred, line_th = decode_y(c1_l_pred[paragraph_id])
+                    save('line', line_X, line_y, line_pred, line_th, paragraph_id=paragraph_id)
+
+                    c2_m_y = context['cropped_2_monochrome_y'][paragraph_id]
+                    c2_ls_y = context['cropped_2_letter_spacing_y'][paragraph_id]
+                    c2_ls_pred = delist(context['cropped_2_letter_spacing_pred'][paragraph_id])
+
+                    for line_id in range(len(c2_m_y)):
+                        letter_spacing_X, _ = decode_y(c2_m_y[line_id])
+                        letter_spacing_y, _ = decode_y(c2_ls_y[line_id])
+                        letter_spacing_pred, letter_spacing_th = decode_y(c2_ls_pred[line_id])
+                        save('letter_spacing', letter_spacing_X, letter_spacing_y,
+                             letter_spacing_pred, letter_spacing_th,
+                             paragraph_id=paragraph_id, line_id=line_id)
+
             print(f'Saving train progress into {train_progress_path}\n')
         else:
             save_pictures_func = None

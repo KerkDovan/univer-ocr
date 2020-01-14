@@ -1,1 +1,1 @@
-from .interpreter import interpret
+from .interpreter import CropAndRotateLines, CropAndRotateParagraphs, interpret

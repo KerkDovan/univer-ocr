@@ -1,3 +1,8 @@
+import os
+from datetime import datetime as dt
+from multiprocessing import Pool, Queue
+from threading import Thread
+
 import numpy as np
 from scipy import ndimage
 
@@ -5,10 +10,10 @@ from ..primitives import BITS_COUNT, decode_char
 
 
 def label_layer(layer):
-    labels, cnt = ndimage.label(layer)
-    result = np.zeros((cnt, *layer.shape), dtype=np.bool)
+    labels, cnt = ndimage.label(layer > np.mean(layer))
+    result = []
     for l_id in range(cnt):
-        result[l_id] = labels == l_id + 1
+        result.append(labels == l_id + 1)
     return result
 
 
@@ -22,6 +27,62 @@ def rearrange_points(points_top, points_center, points_bottom):
         for center in points_center
     ]
     return new_top, points_center, new_bottom
+
+
+def get_center_of_mass(lines_top, lines_center, lines_bottom):
+    top = [np.array(ndimage.center_of_mass(x)) for x in lines_top]
+    center = [np.array(ndimage.center_of_mass(x)) for x in lines_center]
+    bottom = [np.array(ndimage.center_of_mass(x)) for x in lines_bottom]
+    return top, center, bottom
+
+
+def rearrange_lines(lines_top, lines_center, lines_bottom):
+    def cm(lines_top, lines_center, lines_bottom):
+        cm_top, cm_center, cm_bottom = get_center_of_mass(
+            lines_top, lines_center, lines_bottom)
+        top = list(zip(cm_top, lines_top))
+        center = list(zip(cm_center, lines_center))
+        bottom = list(zip(cm_bottom, lines_bottom))
+        return top, center, bottom
+    top, center, bottom = cm(lines_top, lines_center, lines_bottom)
+    lines_top = [
+        sorted(top, key=lambda x: np.linalg.norm(с[0] - x[0]))[0][1]
+        for с in center
+    ]
+    lines_bottom = [
+        sorted(bottom, key=lambda x: np.linalg.norm(с[0] - x[0]))[0][1]
+        for с in center
+    ]
+
+    _, h, w, _ = lines_top[0].shape
+    dist_point = top[0][0] - bottom[0][0]
+    while 0 < dist_point[1] < h or 0 < dist_point[2] < w:
+        dist_point *= 1000
+
+    if abs(dist_point[1]) > abs(dist_point[2]):
+        if dist_point[1] < 0:
+            def sort_key(x):
+                return x[0][1]
+            rotation = None
+        elif dist_point[1] > h:
+            def sort_key(x):
+                return -x[0][1]
+            rotation = 180
+    else:
+        if dist_point[2] < 0:
+            def sort_key(x):
+                return x[0][2]
+            rotation = 270
+        elif dist_point[2] > w:
+            def sort_key(x):
+                return -x[0][2]
+            rotation = 90
+
+    top, center, bottom = cm(lines_top, lines_center, lines_bottom)
+    lines_top = [t[1] for t in sorted(top, key=sort_key)]
+    lines_center = [c[1] for c in sorted(center, key=sort_key)]
+    lines_bottom = [b[1] for b in sorted(bottom, key=sort_key)]
+    return lines_top, lines_center, lines_bottom, rotation
 
 
 def get_sort_ids(center, vector, array):
@@ -111,3 +172,157 @@ def interpret(layers):
             result[(p_id, l_id)] = ''.join(res)
 
     return result
+
+
+def get_rotated(mask, arrays):
+    def rotate(arr, angle):
+        return ndimage.rotate(arr, angle, axes=(2, 1))
+
+    def func(angle):
+        rotated = rotate(mask, angle)
+        _, region_y, region_x, _ = ndimage.find_objects(rotated)[0]
+        return region_y.stop - region_y.start
+
+    low, high = 0.0, 180.0
+    while high - low > 1.0:
+        a = low + (high - low) / 3
+        b = high - (high - low) / 3
+        if func(a) < func(b):
+            high = b
+        else:
+            low = a
+
+    angle = (high + low) / 2
+    rotated_mask = rotate(mask, angle)
+    _, region_y, region_x, _ = ndimage.find_objects(rotated_mask)[0]
+
+    result = [
+        rotate(arr, angle)[:, region_y, region_x, :]
+        for arr in arrays
+    ]
+
+    return result
+
+
+def crop_and_rotate_paragraph(mask, images):
+    _, region_y, region_x, _ = ndimage.find_objects(mask)[0]
+    cropped_mask = mask[:, region_y, region_x, :]
+    cropped_images = [
+        (image * mask)[:, region_y, region_x, :]
+        for image in images
+    ]
+    result = get_rotated(cropped_mask, cropped_images)
+    return result
+
+
+class CropAndRotateParagraphs:
+    def __init__(self, workers_count=None):
+        self.input_queue = Queue()
+        self.output_queue = Queue()
+        self.workers_count = os.cpu_count() if workers_count is None else workers_count
+        self.timers = {
+            'label': dt.now() - dt.now(),
+        }
+        self.run_thread = Thread(target=self._run, daemon=True)
+        self.run_thread.start()
+
+    def __call__(self, masks, images):
+        ts = dt.now()
+        labeled_paragraph = label_layer(masks)
+        self.timers['label'] += dt.now() - ts
+        self.input_queue.put((masks, images, labeled_paragraph))
+        result = self.output_queue.get()
+        return result
+
+    def _run(self):
+        with Pool(self.workers_count) as pool:
+            while True:
+                masks, images, labeled_paragraph = self.input_queue.get()
+                result = [[None for mask in labeled_paragraph] for image in images]
+                async_res = []
+                for paragraph_id, mask in enumerate(labeled_paragraph):
+                    r = pool.apply_async(
+                        crop_and_rotate_paragraph,
+                        (mask, images))
+                    async_res.append((paragraph_id, r))
+                for paragraph_id, res in async_res:
+                    res = res.get()
+                    for image_id in range(len(images)):
+                        result[image_id][paragraph_id] = res[image_id]
+                self.output_queue.put(result)
+
+
+def crop_and_rotate_line(top_mask, center_mask, bottom_mask, rotation, images):
+    _, top_y, top_x, _ = ndimage.find_objects(top_mask)[0]
+    _, center_y, center_x, _ = ndimage.find_objects(center_mask)[0]
+    _, bottom_y, bottom_x, _ = ndimage.find_objects(bottom_mask)[0]
+    y = slice(min(top_y.start, center_y.start, bottom_y.start),
+              max(top_y.stop, center_y.stop, bottom_y.stop))
+    x = slice(min(top_x.start, center_x.start, bottom_x.start),
+              max(top_x.stop, center_x.stop, bottom_x.stop))
+    result = []
+    for i in range(len(images)):
+        cropped = images[i][:, y, x, :]
+        if rotation is not None:
+            cropped = ndimage.rotate(cropped, rotation, axes=(2, 1))
+        result.append(cropped)
+    return result
+
+
+class CropAndRotateLines:
+    def __init__(self, workers_count=None):
+        self.input_queue = Queue()
+        self.output_queue = Queue()
+        self.workers_count = os.cpu_count() if workers_count is None else workers_count
+        self.timers = {
+            'mask_mean': dt.now() - dt.now(),
+            'rearrange': dt.now() - dt.now(),
+        }
+        self.run_thread = Thread(target=self._run, daemon=True)
+        self.run_thread.start()
+
+    def __call__(self, masks, arrays):
+        self.input_queue.put((masks, arrays))
+        result = self.output_queue.get()
+        return result
+
+    def _run(self):
+        with Pool(self.workers_count) as pool:
+            while True:
+                masks, arrays = self.input_queue.get()
+
+                result = [[] for array in arrays]
+                async_res = []
+                for paragraph_id, (mask, *subarrays) in enumerate(zip(masks, *arrays)):
+                    for array_id in range(len(arrays)):
+                        result[array_id].append([])
+
+                    ts = dt.now()
+                    top = mask[:, :, :, 0:1] > np.mean(mask[:, :, :, 0:1])
+                    center = mask[:, :, :, 1:2] > np.mean(mask[:, :, :, 1:2])
+                    bottom = mask[:, :, :, 2:3] > np.mean(mask[:, :, :, 2:3])
+                    self.timers['mask_mean'] += dt.now() - ts
+
+                    ts = dt.now()
+                    top_mask, center_mask, bottom_mask, rotation = rearrange_lines(
+                        label_layer(top), label_layer(center), label_layer(bottom))
+                    self.timers['rearrange'] += dt.now() - ts
+
+                    for line_id in range(len(top_mask)):
+                        for array_id in range(len(arrays)):
+                            result[array_id][paragraph_id].append(None)
+                        index = (paragraph_id, line_id)
+                        paragraph_data = (
+                            top_mask[line_id], center_mask[line_id], bottom_mask[line_id],
+                            rotation)
+                        r = pool.apply_async(
+                            crop_and_rotate_line,
+                            (*paragraph_data, subarrays))
+                        async_res.append((index, r))
+
+                for (paragraph_id, line_id), res in async_res:
+                    res = res.get()
+                    for array_id in range(len(arrays)):
+                        result[array_id][paragraph_id][line_id] = res[array_id]
+
+                self.output_queue.put(result)

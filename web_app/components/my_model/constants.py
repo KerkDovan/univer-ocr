@@ -9,8 +9,8 @@ OUTPUT_LAYER_TAGS = [
     'monochrome',
     'paragraph',
     'line',
-    'char_box',
     'letter_spacing',
+    'char_box',
     'bit',
 ]
 OUTPUT_LAYER_TAGS_IDS = {
@@ -20,8 +20,8 @@ OUTPUT_LAYER_NAMES = {
     OUTPUT_LAYER_TAGS[0]: ['image_monochrome'],
     OUTPUT_LAYER_TAGS[1]: ['paragraph'],
     OUTPUT_LAYER_TAGS[2]: ['line_top', 'line_center', 'line_bottom'],
-    OUTPUT_LAYER_TAGS[3]: ['char_mask_box', 'char_full_box'],
-    OUTPUT_LAYER_TAGS[4]: ['letter_spacing'],
+    OUTPUT_LAYER_TAGS[3]: ['letter_spacing'],
+    OUTPUT_LAYER_TAGS[4]: ['char_mask_box', 'char_full_box'],
     OUTPUT_LAYER_TAGS[5]: [f'bit_{i}' for i in range(BITS_COUNT)],
 }
 OUTPUT_LAYER_NAMES_PLAIN = [

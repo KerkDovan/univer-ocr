@@ -199,20 +199,15 @@ class Trainer:
                 self.model_system.train(context)
                 losses.train(context['losses'])
 
-                ps = None
                 if self.save_pictures_func is not None:
                     self.model_system.predict(context)
-                    tmp_ps = context['prediction']
-                    ps = []
-                    for name in model_names:
-                        ps.extend(tmp_ps[name])
-                    self.save_pictures_func(epoch, 'train', i, X, ys, ps)
+                    self.save_pictures_func(epoch, 'train', i, context)
 
                 self.progress_tracker.message('train_iteration', {
                     'current': i + 1, 'total': iters_cnt
                 })
 
-                del X, ys, ps, context
+                del X, ys, context
                 gc.collect()
 
             y_min, y_mean, y_max = None, None, None
@@ -232,6 +227,7 @@ class Trainer:
                 ps = None
                 if self.save_pictures_func is not None or i == iters_cnt - 1:
                     self.progress_tracker.message('disable_status_update')
+                    context = make_context(X, ys)
                     self.model_system.predict(context)
                     tmp_ps = context['prediction']
                     ps = []
@@ -239,7 +235,7 @@ class Trainer:
                         ps.extend(tmp_ps[name])
                     self.progress_tracker.message('enable_status_update')
                 if self.save_pictures_func is not None:
-                    self.save_pictures_func(epoch, 'validation', i, X, ys, ps)
+                    self.save_pictures_func(epoch, 'validation', i, context)
 
                 if ps is not None:
                     y_min = ' '.join(f'{np.round(CP.asnumpy(CP.cp.min(y)), 3):<5}' for y in ys)
