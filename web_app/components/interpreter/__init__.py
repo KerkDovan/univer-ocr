@@ -1,2 +1,2 @@
-from .interpreter import CropAndRotateLines, CropAndRotateParagraphs, interpret
+from .interpreter import CropAndRotateParagraphs, CropRotateAndZoomLines, interpret
 from .parallelism import MP

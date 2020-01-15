@@ -8,7 +8,7 @@ from PIL import Image
 
 from tqdm import tqdm
 
-from ..interpreter import MP, CropAndRotateLines, CropAndRotateParagraphs
+from ..interpreter import MP, CropAndRotateParagraphs, CropRotateAndZoomLines
 from .constants import GENERATED_FILES_PATH, OUTPUT_LAYER_NAMES_PLAIN_IDS
 from .datasets import train_dataset
 
@@ -31,7 +31,7 @@ def benchmark_one(dirpath, workers_count):
     total_save_time = dt.now() - dt.now()
 
     crop_and_rotate_paragraphs = CropAndRotateParagraphs(workers_count)
-    crop_and_rotate_lines = CropAndRotateLines(workers_count)
+    crop_rotate_and_zoom_lines = CropRotateAndZoomLines(workers_count, 32, 200)
     print(f'Workers count: {workers_count}')
 
     for i in tqdm(range(len(train_dataset)), ascii=True):
@@ -49,7 +49,7 @@ def benchmark_one(dirpath, workers_count):
         total_paragraph_crop_time += dt.now() - ts
 
         ts = dt.now()
-        lines = crop_and_rotate_lines(paragraphs[1], [paragraphs[0]])[0]
+        lines = crop_rotate_and_zoom_lines(paragraphs[1], [paragraphs[0]])[0]
         total_line_crop_time += dt.now() - ts
 
         for j in range(len(paragraphs[0])):
@@ -79,7 +79,7 @@ def benchmark_one(dirpath, workers_count):
     for k, v in crop_and_rotate_paragraphs.timers.items():
         print(f'    {k}: {v.total_seconds()} sec')
     print(f'  Crop and Rotate Lines:')
-    for k, v in crop_and_rotate_lines.timers.items():
+    for k, v in crop_rotate_and_zoom_lines.timers.items():
         print(f'    {k}: {v.total_seconds()} sec')
     print()
 
@@ -93,17 +93,19 @@ def main(*args, **kwargs):
     print(f'os.cpu_count() for this machine is {os.cpu_count()}\n')
 
     try:
+        workers_counts = [1, 2, 4]
+
         print('Using threading')
         MP.use_threading()
-        for workers_count in [1, 2, 4]:
-            benchmark_one(dirpath, workers_count)
+        for count in workers_counts:
+            benchmark_one(dirpath, count)
             time.sleep(1)
             gc.collect()
 
         print('Using multiprocessing')
         MP.use_multiprocessing()
-        for workers_count in [1, 2, 4]:
-            benchmark_one(dirpath, workers_count)
+        for count in workers_counts:
+            benchmark_one(dirpath, count)
             time.sleep(1)
             gc.collect()
 

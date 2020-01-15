@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 
-from ..interpreter import CropAndRotateLines, CropAndRotateParagraphs
+from ..interpreter import CropAndRotateParagraphs, CropRotateAndZoomLines
 from ..nn.gpu import CP
 from ..nn.help_func import make_list_if_not
 from ..nn.layers import Concat, Convolutional2D, LeakyRelu, Sigmoid, Upsample2D
@@ -455,7 +455,7 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         (line_label_2, line_label_2_cpu),
     ])
 
-    crop_and_rotate_lines = CropAndRotateLines(min(4, os.cpu_count()))
+    crop_rotate_and_zoom_lines = CropRotateAndZoomLines(min(4, os.cpu_count()), 32, 32)
 
     @track_function('LineCrop', 'forward', progress_tracker)
     def line_crop_func(context):
@@ -474,7 +474,7 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         ])
 
         results = make_subelements_divisible_by(
-            crop_and_rotate_lines(masks, arrays), 16, 16)
+            crop_rotate_and_zoom_lines(masks, arrays), 16, 16)
 
         put_to_context(context, [
             monochrome_label_3_cpu, 'cropped_2_letter_spacing_y_cpu'

@@ -366,12 +366,14 @@ class CropAndRotateParagraphs:
         return result
 
 
-class CropAndRotateLines:
-    def __init__(self, workers_count=None):
+class CropRotateAndZoomLines:
+    def __init__(self, workers_count=None, zoomed_height=None, minimal_width=None):
         self.manager = MP.mp.Manager()
         self.input_queue = self.manager.Queue()
         self.output_queue = self.manager.Queue()
         self.workers_count = os.cpu_count() if workers_count is None else workers_count
+        self.zoomed_height = zoomed_height
+        self.minimal_width = minimal_width
         self.done = MP.mp.Event()
         self.timers = {
             'mask_mean': dt.now() - dt.now(),
@@ -420,9 +422,8 @@ class CropAndRotateLines:
                         exit(0)
                     self.timers['mask_mean'] += dt.now() - ts
 
-                    r = pool.apply_async(
-                        rearrange_lines,
-                        (label_layer(top), label_layer(center), label_layer(bottom)))
+                    r = pool.apply_async(rearrange_lines, (
+                        label_layer(top), label_layer(center), label_layer(bottom)))
                     async_rearranged.append(r)
 
                 rearranged = [None for _ in async_rearranged]
@@ -441,12 +442,9 @@ class CropAndRotateLines:
                         for array_id in range(len(arrays)):
                             result[array_id][paragraph_id].append(None)
                         index = (paragraph_id, line_id)
-                        paragraph_data = (
+                        r = pool.apply_async(self.func, (
                             top_mask[line_id], center_mask[line_id], bottom_mask[line_id],
-                            rotation)
-                        r = pool.apply_async(
-                            self.func,
-                            (*paragraph_data, subarrays))
+                            rotation, subarrays, self.zoomed_height, self.minimal_width))
                         async_res.append((index, r))
 
                 for (paragraph_id, line_id), res in async_res:
@@ -458,7 +456,7 @@ class CropAndRotateLines:
                 put_to_queue(self.output_queue, result)
 
     @staticmethod
-    def func(top_mask, center_mask, bottom_mask, rotation, images):
+    def func(top_mask, center_mask, bottom_mask, rotation, images, zoomed_height, minimal_width):
         _, top_y, top_x, _ = ndimage.find_objects(top_mask)[0]
         _, center_y, center_x, _ = ndimage.find_objects(center_mask)[0]
         _, bottom_y, bottom_x, _ = ndimage.find_objects(bottom_mask)[0]
@@ -468,8 +466,22 @@ class CropAndRotateLines:
                   max(top_x.stop, center_x.stop, bottom_x.stop))
         result = []
         for i in range(len(images)):
-            cropped = images[i][:, y, x, :]
+            final_image = images[i][:, y, x, :]
+
             if rotation is not None:
-                cropped = rotate_array(cropped, rotation)
-            result.append(cropped)
+                final_image = rotate_array(final_image, rotation)
+
+            if zoomed_height is not None:
+                height = final_image.shape[1]
+                zf = zoomed_height / height
+                final_image = ndimage.zoom(final_image, (1, zf, zf, 1))
+
+            if minimal_width is not None and final_image.shape[2] < minimal_width:
+                bs, h, w, ch = final_image.shape
+                shape = (bs, h, minimal_width, ch)
+                tmp = np.zeros(shape, dtype=final_image.dtype)
+                tmp[:, :, :w, :] = final_image
+                final_image = tmp
+
+            result.append(final_image)
         return result
