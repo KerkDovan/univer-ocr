@@ -1,8 +1,6 @@
 import os
 import signal
 from datetime import datetime as dt
-from multiprocessing import Event, Manager, Pool, Process
-from multiprocessing.managers import RemoteError
 from queue import Empty
 from threading import Thread
 from time import sleep
@@ -11,6 +9,7 @@ import numpy as np
 from scipy import ndimage
 
 from ..primitives import BITS_COUNT, decode_char
+from .parallelism import ERRORS_TO_STOP, MP
 
 
 def label_layer(layer):
@@ -181,14 +180,14 @@ def interpret(layers):
 def put_to_queue(queue, data):
     try:
         queue.put(data)
-    except (BrokenPipeError, EOFError):
+    except ERRORS_TO_STOP:
         return
 
 
 def get_from_queue(queue):
     try:
         return queue.get()
-    except (BrokenPipeError, EOFError):
+    except ERRORS_TO_STOP:
         exit(0)
 
 
@@ -202,7 +201,7 @@ class FindObjectHeightInRotated:
         self.input_queue = self.manager.Queue()
         self.output_queue = self.manager.Queue()
         self.done = done
-        self.worker = Process(
+        self.worker = MP.Process(
             target=self._run, daemon=True,
             args=(self.done, self._func, self.input_queue, self.output_queue))
 
@@ -218,16 +217,15 @@ class FindObjectHeightInRotated:
 
     @staticmethod
     def _run(done, func, input_queue, output_queue):
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
         while not done.is_set():
             try:
                 args = input_queue.get(True, 0.001)
+                result = func(*args)
+                put_to_queue(output_queue, result)
             except Empty:
                 continue
-            except (BrokenPipeError, EOFError):
+            except ERRORS_TO_STOP:
                 break
-            result = func(*args)
-            put_to_queue(output_queue, result)
 
     @staticmethod
     def _func(array, angle):
@@ -242,13 +240,13 @@ class CropAndRotateSingleParagraph:
         self.input_queue = self.manager.Queue()
         self.output_queue = self.manager.Queue()
         self.workers_count = os.cpu_count() if workers_count is None else workers_count
-        self.done = Event()
+        self.done = MP.mp.Event()
         self.height_finders = [
             FindObjectHeightInRotated(self.manager, self.done)
             for _ in range(2 * self.workers_count)
         ]
         self.workers = [
-            Process(target=self._run, daemon=True, args=(
+            MP.Process(target=self._run, daemon=True, args=(
                 self.done, self._func, self.input_queue, self.output_queue,
                 self.height_finders[2 * i].input_queue,
                 self.height_finders[2 * i].output_queue,
@@ -284,7 +282,7 @@ class CropAndRotateSingleParagraph:
                 label, res = self.output_queue.get(True, 0.001)
             except Empty:
                 continue
-            except (KeyboardInterrupt, BrokenPipeError, EOFError):
+            except ERRORS_TO_STOP:
                 break
             result[label] = res
             counter += 1
@@ -293,24 +291,23 @@ class CropAndRotateSingleParagraph:
     @staticmethod
     def _run(done, func, input_queue, output_queue,
              a_in_queue, a_out_queue, b_in_queue, b_out_queue):
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
         while not done.is_set():
             try:
                 label, mask, arrays = input_queue.get(True, 0.001)
+                _, region_y, region_x, _ = ndimage.find_objects(mask)[0]
+                cropped_mask = mask[:, region_y, region_x, :]
+                cropped_arrays = [
+                    (image * mask)[:, region_y, region_x, :]
+                    for image in arrays
+                ]
+                result = func(
+                    a_in_queue, a_out_queue, b_in_queue, b_out_queue,
+                    cropped_mask, cropped_arrays)
+                put_to_queue(output_queue, (label, result))
             except Empty:
                 continue
-            except (BrokenPipeError, EOFError):
+            except ERRORS_TO_STOP:
                 break
-            _, region_y, region_x, _ = ndimage.find_objects(mask)[0]
-            cropped_mask = mask[:, region_y, region_x, :]
-            cropped_arrays = [
-                (image * mask)[:, region_y, region_x, :]
-                for image in arrays
-            ]
-            result = func(
-                a_in_queue, a_out_queue, b_in_queue, b_out_queue,
-                cropped_mask, cropped_arrays)
-            put_to_queue(output_queue, (label, result))
 
     @staticmethod
     def _func(a_in_queue, a_out_queue, b_in_queue, b_out_queue, mask, arrays):
@@ -340,7 +337,7 @@ class CropAndRotateSingleParagraph:
 
 class CropAndRotateParagraphs:
     def __init__(self, workers_count=None):
-        self.manager = Manager()
+        self.manager = MP.mp.Manager()
         self.timers = {
             'label': dt.now() - dt.now(),
         }
@@ -371,11 +368,11 @@ class CropAndRotateParagraphs:
 
 class CropAndRotateLines:
     def __init__(self, workers_count=None):
-        self.manager = Manager()
+        self.manager = MP.mp.Manager()
         self.input_queue = self.manager.Queue()
         self.output_queue = self.manager.Queue()
         self.workers_count = os.cpu_count() if workers_count is None else workers_count
-        self.done = Event()
+        self.done = MP.mp.Event()
         self.timers = {
             'mask_mean': dt.now() - dt.now(),
             'rearrange': dt.now() - dt.now(),
@@ -395,19 +392,18 @@ class CropAndRotateLines:
 
     @staticmethod
     def init_worker():
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        if MP.is_multiprocessing_used:
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     def _run(self):
-        with Pool(self.workers_count, self.init_worker) as pool:
+        with MP.Pool(self.workers_count, self.init_worker) as pool:
             while not self.done.is_set():
                 try:
                     masks, arrays = self.input_queue.get(True, 0.001)
                 except Empty:
                     continue
-                except (KeyboardInterrupt, BrokenPipeError, EOFError):
+                except ERRORS_TO_STOP:
                     break
-                except RemoteError:
-                    exit(0)
 
                 ts = dt.now()
                 async_rearranged = []

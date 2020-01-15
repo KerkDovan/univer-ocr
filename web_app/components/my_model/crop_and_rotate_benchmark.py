@@ -1,4 +1,6 @@
+import gc
 import os
+import time
 from datetime import datetime as dt
 
 import numpy as np
@@ -6,7 +8,7 @@ from PIL import Image
 
 from tqdm import tqdm
 
-from ..interpreter import CropAndRotateLines, CropAndRotateParagraphs
+from ..interpreter import MP, CropAndRotateLines, CropAndRotateParagraphs
 from .constants import GENERATED_FILES_PATH, OUTPUT_LAYER_NAMES_PLAIN_IDS
 from .datasets import train_dataset
 
@@ -24,15 +26,13 @@ def from_array(array, ch=0):
 
 
 def benchmark_one(dirpath, workers_count):
-    print(f'os.cpu_count() for this machine is {os.cpu_count()}\n')
-
     total_paragraph_crop_time = dt.now() - dt.now()
     total_line_crop_time = dt.now() - dt.now()
     total_save_time = dt.now() - dt.now()
 
     crop_and_rotate_paragraphs = CropAndRotateParagraphs(workers_count)
     crop_and_rotate_lines = CropAndRotateLines(workers_count)
-    print(f'Workers count: {crop_and_rotate_lines.workers_count}')
+    print(f'Workers count: {workers_count}')
 
     for i in tqdm(range(len(train_dataset)), ascii=True):
         X, ys = train_dataset.get_images(i)
@@ -90,9 +90,22 @@ def main(*args, **kwargs):
     for fpath in dirpath.iterdir():
         os.remove(fpath)
 
+    print(f'os.cpu_count() for this machine is {os.cpu_count()}\n')
+
     try:
+        print('Using threading')
+        MP.use_threading()
         for workers_count in [1, 2, 4]:
             benchmark_one(dirpath, workers_count)
+            time.sleep(1)
+            gc.collect()
+
+        print('Using multiprocessing')
+        MP.use_multiprocessing()
+        for workers_count in [1, 2, 4]:
+            benchmark_one(dirpath, workers_count)
+            time.sleep(1)
+            gc.collect()
 
     except KeyboardInterrupt:
         print('Stopped by keyboard interrupt')
