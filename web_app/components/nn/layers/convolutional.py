@@ -6,7 +6,7 @@ from numba import cuda
 
 from ..gpu import CP
 from ..help_func import make_list_if_not, tuplize
-from .layers import BaseLayerGPU, Param
+from .layers import BaseLayer, BaseLayerGPU, Param
 
 
 class Convolutional2D(BaseLayerGPU):
@@ -325,3 +325,46 @@ class Convolutional2D(BaseLayerGPU):
 
     def params(self):
         return {'w': self.w, 'b': self.b}
+
+
+class Conv2DToBatchedFixedWidthed(BaseLayer):
+    def __init__(self, width, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.width = width
+
+    def _forward(self, X, mem_id=0):
+        new_shape = self.get_output_shapes(X.shape)[0]
+        bs, h, w, ch = X.shape
+        y = CP.cp.zeros(new_shape)
+        out_bs = 0
+        for in_bs in range(bs):
+            for w_id in range(w - self.width + 1):
+                y[out_bs, :, :, :] = X[in_bs, :, w_id:w_id + self.width, :]
+                out_bs += 1
+        self._mem[mem_id] = X.shape
+        return y
+
+    def _backward(self, grad, mem_id=0):
+        input_shape = self._mem[mem_id]
+        bs, h, w, ch = input_shape
+        dx = CP.cp.zeros(input_shape)
+        out_bs = 0
+        for in_bs in range(bs):
+            for w_id in range(w - self.width + 1):
+                dx[in_bs, :, w_id:w_id + self.width, :] += grad[out_bs, :, :, :]
+                out_bs += 1
+        return dx
+
+    def get_output_shapes(self, input_shapes):
+        input_shapes = make_list_if_not(input_shapes)
+        output_shapes = []
+        for i in range(len(input_shapes)):
+            bs, h, w, ch = input_shapes[i]
+            assert w >= self.width, (
+                f'Input width must be >= than output width, '
+                f'found: {w} < {self.width}')
+            new_w = self.width
+            windows_count = w - new_w + 1
+            new_bs = bs * windows_count
+            output_shapes.append((new_bs, h, new_w, ch))
+        return output_shapes

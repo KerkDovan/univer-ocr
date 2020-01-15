@@ -1,4 +1,4 @@
-from .convolutional import Convolutional2D
+from .convolutional import Conv2DToBatchedFixedWidthed, Convolutional2D
 from .layers import (
     BaseLayer, BaseLayerGPU, Concat, Flatten, FullyConnected, LeakyRelu, Noop, Param, Relu,
     Sigmoid)

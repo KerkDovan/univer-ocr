@@ -6,8 +6,8 @@ from pprint import pprint
 from .. import gradient_check as grad_check
 from ..gpu import CP
 from ..layers import (
-    Concat, Convolutional2D, Flatten, FullyConnected, LeakyRelu, MaxPool2D, Noop, Relu, Sigmoid,
-    Upsample2D)
+    Concat, Conv2DToBatchedFixedWidthed, Convolutional2D, Flatten, FullyConnected, LeakyRelu,
+    MaxPool2D, Noop, Relu, Sigmoid, Upsample2D)
 from ..losses import (
     SegmentationDice2D, SegmentationJaccard2D, SigmoidCrossEntropy, SoftmaxCrossEntropy)
 from ..models import Model, Sequential
@@ -163,6 +163,9 @@ def main(use_gpu=False):
     test_convolutional(
         'Convolutional 2D Layer with Padding and Stride',
         Convolutional2D(ks, in_ch, out_ch, padding=1, stride=2))
+
+    print('Conv2D to Batched Fixed Widthed')
+    check_layer(Conv2DToBatchedFixedWidthed(3), X_conv2d)
 
     print('Max Pooling 2D Layer')
     X_maxpool2d = CP.cp.reshape(CP.cp.array([
