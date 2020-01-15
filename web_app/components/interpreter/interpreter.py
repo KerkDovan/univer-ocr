@@ -396,6 +396,9 @@ class CropAndRotateLines:
             signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     def _run(self):
+        def thresholded(arr):
+            return arr > 0.5 * (np.mean(arr) + np.max(arr))
+
         with MP.Pool(self.workers_count, self.init_worker) as pool:
             while not self.done.is_set():
                 try:
@@ -410,9 +413,9 @@ class CropAndRotateLines:
                 for mask, *subarrays in zip(masks, *arrays):
                     ts = dt.now()
                     try:
-                        top = mask[:, :, :, 0:1] > np.mean(mask[:, :, :, 0:1])
-                        center = mask[:, :, :, 1:2] > np.mean(mask[:, :, :, 1:2])
-                        bottom = mask[:, :, :, 2:3] > np.mean(mask[:, :, :, 2:3])
+                        top = thresholded(mask[:, :, :, 0:1])
+                        center = thresholded(mask[:, :, :, 1:2])
+                        bottom = thresholded(mask[:, :, :, 2:3])
                     except TypeError:
                         exit(0)
                     self.timers['mask_mean'] += dt.now() - ts
