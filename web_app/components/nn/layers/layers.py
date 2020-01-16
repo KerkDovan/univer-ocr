@@ -30,7 +30,7 @@ class BaseLayer:
                  regularizer=None,
                  optimizer=Adam()):
         self.name = name
-        self.input_shapes = input_shapes
+        self.input_shapes = make_list_if_not(input_shapes)
         self.inputs_count = len(self.input_shapes) if self.input_shapes is not None else None
         self.trainable = trainable
         self.initializer = initializer

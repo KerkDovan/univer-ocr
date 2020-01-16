@@ -5,14 +5,17 @@ import numpy as np
 from ..interpreter import CropAndRotateParagraphs, CropRotateAndZoomLines
 from ..nn.gpu import CP
 from ..nn.help_func import make_list_if_not
-from ..nn.layers import Concat, Convolutional2D, LeakyRelu, Sigmoid, Upsample2D
-from ..nn.losses import SegmentationDice2D
+from ..nn.layers import (
+    Concat, Conv2DToBatchedFixedWidthed, Convolutional2D, Flatten, FullyConnected, LeakyRelu,
+    Sigmoid, Upsample2D)
+from ..nn.losses import SegmentationDice2D, SoftmaxCrossEntropy
 from ..nn.model_system import (
     IterableSelector, ModelComponent, ModelSystem, RawFunctionComponent, StringSelector)
 from ..nn.models import Model
 from ..nn.optimizers import Adam
 from ..nn.progress_tracker import track_function
 from ..nn.regularizations import L2
+from ..primitives import CHARS
 from .constants import OUTPUT_LAYER_NAMES, OUTPUT_LAYER_TAGS
 
 
@@ -122,6 +125,7 @@ def make_monochrome(input_shape, optimizer=None):
     model = Model(
         layers=layers, relations=relations,
         loss=SegmentationDice2D())
+    model.initialize(input_shape)
 
     return model
 
@@ -178,6 +182,7 @@ def make_paragraph(input_shape, optimizer=None):
     model = wrap(
         'Paragraph', Model(layers=layers, relations=relations),
         loss=SegmentationDice2D())
+    model.initialize(input_shape)
 
     return model
 
@@ -234,6 +239,62 @@ def make_line(input_shape, optimizer=None):
     model = wrap(
         'Line', Model(layers=layers, relations=relations),
         loss=SegmentationDice2D())
+    model.initialize(input_shape)
+
+    return model
+
+
+def make_dense_block(out_counts, **kwargs):
+    out_counts = make_list_if_not(out_counts)
+    layers = {}
+    relations = {}
+    prev = 0
+    for i in range(1, len(out_counts) + 1):
+        dense_name, dense = f'dense_{i}', FullyConnected(n_output=out_counts[i - 1], **kwargs)
+        layers[dense_name] = dense
+        relations[dense_name] = prev
+        if i < len(out_counts):
+            activation_name, activation = f'leaky_relu_{i}', LeakyRelu(0.01)
+            layers[activation_name] = activation
+            relations[activation_name] = dense_name
+            prev = activation_name
+        else:
+            prev = dense_name
+    relations[0] = prev
+    return Model(layers, relations)
+
+
+def make_chars(input_shape, optimizer=None):
+    batch_size, height, width, in_channels = input_shape
+    optimizer = Adam(lr=1e-2) if optimizer is None else optimizer
+
+    kwargs = {
+        'optimizer': optimizer,
+        'trainable': True,
+    }
+
+    ch_counts = [64, 128, 256]
+    n_counts = [1024, 128, len(CHARS)]
+
+    layers = {
+        'conv_block': make_conv_block(
+            ch_counts, kernel_size=(5, 3), padding=(0, 1), stride=(2, 1), **kwargs),
+        'fixed_width': Conv2DToBatchedFixedWidthed(8),
+        'flatten': Flatten(),
+        'dense_block': make_dense_block(n_counts, **kwargs),
+    }
+    relations = {
+        'conv_block': 0,
+        'fixed_width': 'conv_block',
+        'flatten': 'fixed_width',
+        'dense_block': 'flatten',
+        0: 'dense_block'
+    }
+
+    model = wrap(
+        'Chars', Model(layers=layers, relations=relations),
+        loss=SoftmaxCrossEntropy())
+    model.initialize(input_shape)
 
     return model
 
@@ -290,6 +351,7 @@ def make_letter_spacing(input_shape, optimizer=None):
     model = wrap(
         'LetterSpacing', Model(layers=layers, relations=relations),
         loss=SegmentationDice2D())
+    model.initialize(input_shape)
 
     return model
 
@@ -525,7 +587,6 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         'LetterSpacing': letter_spacing.model,
     }
     for model_name, model in models.items():
-        model.initialize(input_shape)
         if progress_tracker is not None:
             model.init_progress_tracker(progress_tracker, model_name)
         if weights is not None:
