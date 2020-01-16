@@ -1,6 +1,7 @@
 import os
 import random
-from multiprocessing import Process, Queue
+from multiprocessing import Event, Process, Queue
+from queue import Empty, Full
 
 import numpy as np
 
@@ -8,18 +9,19 @@ from ..image_generator import LayeredImage, random_font, random_text
 from .constants import INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES
 
 
-def generate_picture(width, height):
+def generate_picture(width, height, rotate=False):
     bg_color = tuple(random.randint(1, 255) for _ in range(4))
     layers = LayeredImage(width, height, bg_color)
     for i in range(30):
         layers.add_paragraph(random_text(), random_font(16, 16))
-    layers = layers.rotate(random.uniform(0, 360))
+    if rotate:
+        layers = layers.rotate(random.uniform(0, 360))
     layers = layers.make_divisible_by(16, 16)
     return layers.get_raw()
 
 
-def generate_train_data(width, height):
-    picture = generate_picture(width, height)
+def generate_train_data(width, height, rotate=False):
+    picture = generate_picture(width, height, rotate)
     X = np.array(picture[INPUT_LAYER_NAME])
     y = np.array([np.array(picture[name]) for name in OUTPUT_LAYER_NAMES])
     y = np.moveaxis(y, 0, -1)
@@ -28,34 +30,47 @@ def generate_train_data(width, height):
     return X, y
 
 
-def put_train_data(width, height, queue, generator_func):
-    while True:
-        train_data = generator_func(width, height)
-        queue.put(train_data)
-
-
 class DataGenerator:
-    def __init__(self, width, height, queue_size, generator_func=generate_train_data):
-        self.width = width
-        self.height = height
-        self.queue_size = queue_size
+    def __init__(self, queue_size=None, generator_func=generate_train_data,
+                 func_args=(), func_kwargs={}):
+        self.queue_size = os.cpu_count() if queue_size is None else queue_size
         self.generator_func = generator_func
+        self.func_args = func_args
+        self.func_kwargs = func_kwargs
+        self.done = Event()
         self.data_queue = Queue(maxsize=self.queue_size)
         self.workers = [
-            Process(target=put_train_data, daemon=True,
-                    args=(self.width, self.height, self.data_queue, self.generator_func))
+            Process(target=self._run, daemon=True, args=(
+                self.done, self.data_queue,
+                self.generator_func, self.func_args, self.func_kwargs))
             for _ in range(min(self.queue_size, os.cpu_count()))
         ]
 
     def start(self):
+        self.done.clear()
         for worker in self.workers:
             worker.start()
 
+    def stop(self):
+        self.done.set()
+
+    @staticmethod
+    def _run(done, queue, generator_func, func_args, func_kwargs):
+        train_data = None
+        while not done.is_set():
+            if train_data is None:
+                train_data = generator_func(*func_args, **func_kwargs)
+            try:
+                queue.put(train_data, timeout=0.1)
+                train_data = None
+            except Full:
+                pass
+
     def get_data(self):
         result = None
-        while result is None:
+        while result is None and not self.done.is_set():
             try:
-                result = self.data_queue.get(timeout=1)
-            except Exception:
+                result = self.data_queue.get(timeout=0.1)
+            except Empty:
                 pass
         return result

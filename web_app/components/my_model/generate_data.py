@@ -6,7 +6,8 @@ from .train_data_generator import DataGenerator, generate_picture
 
 
 def main(*args, **kwargs):
-    data_generator = DataGenerator(640, 480, 4, generator_func=generate_picture)
+    data_generator = DataGenerator(
+        generator_func=generate_picture, func_args=(640, 480, False))
     data_generator.start()
 
     train_path = TRAIN_DATA_PATH
@@ -24,6 +25,8 @@ def main(*args, **kwargs):
         images = data_generator.get_data()
         for layer_name, image in images.items():
             image.save(val_path / f'{i}_{layer_name}.png')
+
+    data_generator.stop()
 
 
 if __name__ == '__main__':
