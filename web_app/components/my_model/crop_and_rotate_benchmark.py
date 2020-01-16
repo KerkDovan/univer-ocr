@@ -41,15 +41,20 @@ def benchmark_one(dirpath, workers_count):
         line_center = to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS['line_center']])
         line_bottom = to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS['line_bottom']])
         line = np.concatenate([line_top, line_center, line_bottom], axis=3)
+        bits_and_letter_spacings = np.concatenate([
+            *[to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS[f'bit_{i}']]) for i in range(8)],
+            to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS['letter_spacing']])
+        ], axis=3)
         mask = to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS['paragraph']])
 
         ts = dt.now()
         paragraphs = crop_and_rotate_paragraphs(
-            mask, [monochrome, line])
+            mask, [monochrome, line, bits_and_letter_spacings])
         total_paragraph_crop_time += dt.now() - ts
 
         ts = dt.now()
-        lines = crop_rotate_and_zoom_lines(paragraphs[1], [paragraphs[0]])[0]
+        lines, bit_lines = crop_rotate_and_zoom_lines(
+            paragraphs[1], [paragraphs[0], paragraphs[2]])
         total_line_crop_time += dt.now() - ts
 
         for j in range(len(paragraphs[0])):
@@ -59,15 +64,25 @@ def benchmark_one(dirpath, workers_count):
             cr_line_top = from_array(paragraphs[1][j], ch=0)
             cr_line_center = from_array(paragraphs[1][j], ch=1)
             cr_line_bottom = from_array(paragraphs[1][j], ch=2)
+            cr_bits = [from_array(paragraphs[2][j], ch=i) for i in range(8)]
+            cr_letter_spacing = from_array(paragraphs[2][j], ch=8)
 
             cr_monochrome.save(dirpath / f'{i}_{j}_0_monochrome.png')
             cr_line_top.save(dirpath / f'{i}_{j}_1_line_top.png')
             cr_line_center.save(dirpath / f'{i}_{j}_2_line_center.png')
             cr_line_bottom.save(dirpath / f'{i}_{j}_3_line_bottom.png')
+            for k, bit in enumerate(cr_bits):
+                bit.save(dirpath / f'{i}_{j}_4_bit_{k}.png')
+            cr_letter_spacing.save(dirpath / f'{i}_{j}_5_letter_spacing.png')
 
             for k in range(len(lines[j])):
-                cr_line = from_array(lines[j][k])
-                cr_line.save(dirpath / f'{i}_{j}_4_{k}_line.png')
+                concatenated = np.concatenate([
+                    lines[j][k],
+                    *[bit_lines[j][k][:, :, :, ch:ch + 1] for ch in range(8)],
+                    bit_lines[j][k][:, :, :, 8:9],
+                ], axis=1)
+                cr_line = from_array(concatenated)
+                cr_line.save(dirpath / f'{i}_{j}_6_{k}_line.png')
 
             total_save_time += dt.now() - ts
 

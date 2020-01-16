@@ -191,7 +191,9 @@ def get_from_queue(queue):
         exit(0)
 
 
-def rotate_array(array, angle):
+def rotate_array(array, angle=None):
+    if angle is None:
+        return array
     return ndimage.rotate(array, angle, axes=(2, 1))
 
 
@@ -235,31 +237,39 @@ class FindObjectHeightInRotated:
 
 
 class CropAndRotateSingleParagraph:
-    def __init__(self, manager, workers_count=None):
+    def __init__(self, manager, workers_count=None, find_rotation=True):
         self.manager = manager
         self.input_queue = self.manager.Queue()
         self.output_queue = self.manager.Queue()
         self.workers_count = os.cpu_count() if workers_count is None else workers_count
+        self.find_rotation = find_rotation
         self.done = MP.mp.Event()
         self.height_finders = [
             FindObjectHeightInRotated(self.manager, self.done)
             for _ in range(2 * self.workers_count)
-        ]
-        self.workers = [
-            MP.Process(target=self._run, daemon=True, args=(
-                self.done, self._func, self.input_queue, self.output_queue,
+        ] if self.find_rotation else []
+        queues = [
+            (
                 self.height_finders[2 * i].input_queue,
                 self.height_finders[2 * i].output_queue,
                 self.height_finders[2 * i + 1].input_queue,
-                self.height_finders[2 * i + 1].output_queue))
+                self.height_finders[2 * i + 1].output_queue
+            ) if self.find_rotation else (None, None, None, None)
+            for i in range(self.workers_count)
+        ]
+        self.workers = [
+            MP.Process(target=self._run, daemon=True, args=(
+                self.done, self._func, self.find_rotation,
+                self.input_queue, self.output_queue, *queues[i]))
             for i in range(self.workers_count)
         ]
 
     def start(self):
         for worker in self.workers:
             worker.start()
-        for hf in self.height_finders:
-            hf.start()
+        if self.find_rotation:
+            for hf in self.height_finders:
+                hf.start()
 
     def stop(self):
         self.done.set()
@@ -289,7 +299,7 @@ class CropAndRotateSingleParagraph:
         return result
 
     @staticmethod
-    def _run(done, func, input_queue, output_queue,
+    def _run(done, func, find_rotation, input_queue, output_queue,
              a_in_queue, a_out_queue, b_in_queue, b_out_queue):
         while not done.is_set():
             try:
@@ -301,6 +311,7 @@ class CropAndRotateSingleParagraph:
                     for image in arrays
                 ]
                 result = func(
+                    find_rotation,
                     a_in_queue, a_out_queue, b_in_queue, b_out_queue,
                     cropped_mask, cropped_arrays)
                 put_to_queue(output_queue, (label, result))
@@ -310,21 +321,24 @@ class CropAndRotateSingleParagraph:
                 break
 
     @staticmethod
-    def _func(a_in_queue, a_out_queue, b_in_queue, b_out_queue, mask, arrays):
-        low, high = 0.0, 180.0
-        while high - low > 1.0:
-            a = low + (high - low) / 3
-            b = high - (high - low) / 3
-            put_to_queue(a_in_queue, (mask, a))
-            put_to_queue(b_in_queue, (mask, b))
-            height_a = get_from_queue(a_out_queue)
-            height_b = get_from_queue(b_out_queue)
-            if height_a < height_b:
-                high = b
-            else:
-                low = a
+    def _func(find_rotation, a_in_queue, a_out_queue, b_in_queue, b_out_queue, mask, arrays):
+        if find_rotation:
+            low, high = 0.0, 180.0
+            while high - low > 1.0:
+                a = low + (high - low) / 3
+                b = high - (high - low) / 3
+                put_to_queue(a_in_queue, (mask, a))
+                put_to_queue(b_in_queue, (mask, b))
+                height_a = get_from_queue(a_out_queue)
+                height_b = get_from_queue(b_out_queue)
+                if height_a < height_b:
+                    high = b
+                else:
+                    low = a
+            angle = (high + low) / 2
+        else:
+            angle = None
 
-        angle = (high + low) / 2
         rotated_mask = rotate_array(mask, angle)
         _, region_y, region_x, _ = ndimage.find_objects(rotated_mask)[0]
 
@@ -336,12 +350,12 @@ class CropAndRotateSingleParagraph:
 
 
 class CropAndRotateParagraphs:
-    def __init__(self, workers_count=None):
+    def __init__(self, workers_count=None, find_rotation=True):
         self.manager = MP.mp.Manager()
         self.timers = {
             'label': dt.now() - dt.now(),
         }
-        self.carsp = CropAndRotateSingleParagraph(self.manager, workers_count)
+        self.carsp = CropAndRotateSingleParagraph(self.manager, workers_count, find_rotation)
         self.carsp.start()
 
     def __del__(self):
@@ -378,6 +392,7 @@ class CropRotateAndZoomLines:
         self.timers = {
             'mask_mean': dt.now() - dt.now(),
             'rearrange': dt.now() - dt.now(),
+            'slices': dt.now() - dt.now(),
             'crop_and_rotate': dt.now() - dt.now(),
         }
         self.run_thread = Thread(target=self._run, daemon=True)
@@ -410,53 +425,63 @@ class CropRotateAndZoomLines:
                 except ERRORS_TO_STOP:
                     break
 
-                ts = dt.now()
+                rearrange_ts = dt.now()
+
                 async_rearranged = []
                 for mask, *subarrays in zip(masks, *arrays):
-                    ts = dt.now()
+                    mask_mean_ts = dt.now()
                     try:
                         top = thresholded(mask[:, :, :, 0:1])
                         center = thresholded(mask[:, :, :, 1:2])
                         bottom = thresholded(mask[:, :, :, 2:3])
                     except TypeError:
                         exit(0)
-                    self.timers['mask_mean'] += dt.now() - ts
+                    self.timers['mask_mean'] += dt.now() - mask_mean_ts
 
                     r = pool.apply_async(rearrange_lines, (
                         label_layer(top), label_layer(center), label_layer(bottom)))
                     async_rearranged.append(r)
 
-                rearranged = [None for _ in async_rearranged]
-                for i, r in enumerate(async_rearranged):
-                    rearranged[i] = r.get()
-                self.timers['rearrange'] += dt.now() - ts
+                slices_ts = dt.now()
 
-                ts = dt.now()
+                async_slices = []
                 result = [[] for array in arrays]
-                async_res = []
-                for paragraph_id, subarrays in enumerate(zip(*arrays)):
+                for paragraph_id, _ in enumerate(zip(*arrays)):
                     for array_id in range(len(arrays)):
                         result[array_id].append([])
-                    top_mask, center_mask, bottom_mask, rotation = rearranged[paragraph_id]
+                    top_mask, center_mask, bottom_mask, rotation = (
+                        async_rearranged[paragraph_id].get())
                     for line_id in range(len(top_mask)):
                         for array_id in range(len(arrays)):
                             result[array_id][paragraph_id].append(None)
                         index = (paragraph_id, line_id)
-                        r = pool.apply_async(self.func, (
-                            top_mask[line_id], center_mask[line_id], bottom_mask[line_id],
-                            rotation, subarrays, self.zoomed_height, self.minimal_width))
+                        r = pool.apply_async(self._func1, (
+                            top_mask[line_id], center_mask[line_id], bottom_mask[line_id]))
+                        async_slices.append((index, r, rotation))
+
+                self.timers['rearrange'] += dt.now() - rearrange_ts
+                crop_and_rotate_ts = dt.now()
+
+                async_res = []
+                for (paragraph_id, line_id), slices, rotation in async_slices:
+                    y, x = slices.get()
+                    for array_id in range(len(arrays)):
+                        index = (array_id, paragraph_id, line_id)
+                        r = pool.apply_async(self._func2, (
+                            arrays[array_id][paragraph_id], y, x, rotation,
+                            self.zoomed_height, self.minimal_width))
                         async_res.append((index, r))
 
-                for (paragraph_id, line_id), res in async_res:
-                    res = res.get()
-                    for array_id in range(len(arrays)):
-                        result[array_id][paragraph_id][line_id] = res[array_id]
-                self.timers['crop_and_rotate'] += dt.now() - ts
+                self.timers['slices'] += dt.now() - slices_ts
+
+                for (array_id, paragraph_id, line_id), res in async_res:
+                    result[array_id][paragraph_id][line_id] = res.get()
+                self.timers['crop_and_rotate'] += dt.now() - crop_and_rotate_ts
 
                 put_to_queue(self.output_queue, result)
 
     @staticmethod
-    def func(top_mask, center_mask, bottom_mask, rotation, images, zoomed_height, minimal_width):
+    def _func1(top_mask, center_mask, bottom_mask):
         _, top_y, top_x, _ = ndimage.find_objects(top_mask)[0]
         _, center_y, center_x, _ = ndimage.find_objects(center_mask)[0]
         _, bottom_y, bottom_x, _ = ndimage.find_objects(bottom_mask)[0]
@@ -464,24 +489,25 @@ class CropRotateAndZoomLines:
                   max(top_y.stop, center_y.stop, bottom_y.stop))
         x = slice(min(top_x.start, center_x.start, bottom_x.start),
                   max(top_x.stop, center_x.stop, bottom_x.stop))
-        result = []
-        for i in range(len(images)):
-            final_image = images[i][:, y, x, :]
+        return y, x
 
-            if rotation is not None:
-                final_image = rotate_array(final_image, rotation)
+    @staticmethod
+    def _func2(image, y, x, rotation, zoomed_height, minimal_width):
+        final_image = image[:, y, x, :]
 
-            if zoomed_height is not None:
-                height = final_image.shape[1]
-                zf = zoomed_height / height
-                final_image = ndimage.zoom(final_image, (1, zf, zf, 1))
+        if rotation is not None:
+            final_image = rotate_array(final_image, rotation)
 
-            if minimal_width is not None and final_image.shape[2] < minimal_width:
-                bs, h, w, ch = final_image.shape
-                shape = (bs, h, minimal_width, ch)
-                tmp = np.zeros(shape, dtype=final_image.dtype)
-                tmp[:, :, :w, :] = final_image
-                final_image = tmp
+        if zoomed_height is not None:
+            height = final_image.shape[1]
+            zf = zoomed_height / height
+            final_image = ndimage.zoom(final_image, (1, zf, zf, 1))
 
-            result.append(final_image)
-        return result
+        if minimal_width is not None and final_image.shape[2] < minimal_width:
+            bs, h, w, ch = final_image.shape
+            shape = (bs, h, minimal_width, ch)
+            tmp = np.zeros(shape, dtype=final_image.dtype)
+            tmp[:, :, :w, :] = final_image
+            final_image = tmp
+
+        return final_image
