@@ -383,21 +383,13 @@ class CropAndRotateParagraphs:
         return result
 
 
-class CropRotateAndZoomLines:
-    def __init__(self, workers_count=None, zoomed_height=None, minimal_width=None):
+class BaseWorkersPool:
+    def __init__(self, workers_count=None):
         self.manager = MP.mp.Manager()
         self.input_queue = self.manager.Queue()
         self.output_queue = self.manager.Queue()
         self.workers_count = os.cpu_count() if workers_count is None else workers_count
-        self.zoomed_height = zoomed_height
-        self.minimal_width = minimal_width
         self.done = MP.mp.Event()
-        self.timers = {
-            'mask_mean': dt.now() - dt.now(),
-            'rearrange': dt.now() - dt.now(),
-            'slices': dt.now() - dt.now(),
-            'crop_and_rotate': dt.now() - dt.now(),
-        }
         self.run_thread = Thread(target=self._run, daemon=True)
         self.run_thread.start()
 
@@ -405,8 +397,8 @@ class CropRotateAndZoomLines:
         self.done.set()
         sleep(0.001)
 
-    def __call__(self, masks, arrays):
-        put_to_queue(self.input_queue, (masks, arrays))
+    def __call__(self, *args, **kwargs):
+        put_to_queue(self.input_queue, (args, kwargs))
         result = get_from_queue(self.output_queue)
         return result
 
@@ -416,72 +408,94 @@ class CropRotateAndZoomLines:
             signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     def _run(self):
-        def thresholded(arr):
-            return arr > 0.5 * (np.mean(arr) + np.max(arr))
-
         with MP.Pool(self.workers_count, self.init_worker) as pool:
             while not self.done.is_set():
                 try:
-                    masks, arrays = self.input_queue.get(True, 0.001)
+                    args, kwargs = self.input_queue.get(True, 0.001)
                 except Empty:
                     continue
                 except ERRORS_TO_STOP:
                     break
-
-                rearrange_ts = dt.now()
-
-                async_rearranged = []
-                for mask, *subarrays in zip(masks, *arrays):
-                    mask_mean_ts = dt.now()
-                    try:
-                        top = thresholded(mask[:, :, :, 0:1])
-                        center = thresholded(mask[:, :, :, 1:2])
-                        bottom = thresholded(mask[:, :, :, 2:3])
-                    except TypeError:
-                        exit(0)
-                    self.timers['mask_mean'] += dt.now() - mask_mean_ts
-
-                    r = pool.apply_async(rearrange_lines, (
-                        label_layer(top), label_layer(center), label_layer(bottom)))
-                    async_rearranged.append(r)
-
-                slices_ts = dt.now()
-
-                async_slices = []
-                result = [[] for array in arrays]
-                for paragraph_id, _ in enumerate(zip(*arrays)):
-                    for array_id in range(len(arrays)):
-                        result[array_id].append([])
-                    top_mask, center_mask, bottom_mask, rotation = (
-                        async_rearranged[paragraph_id].get())
-                    for line_id in range(len(top_mask)):
-                        for array_id in range(len(arrays)):
-                            result[array_id][paragraph_id].append(None)
-                        index = (paragraph_id, line_id)
-                        r = pool.apply_async(self._func1, (
-                            top_mask[line_id], center_mask[line_id], bottom_mask[line_id]))
-                        async_slices.append((index, r, rotation))
-
-                self.timers['rearrange'] += dt.now() - rearrange_ts
-                crop_and_rotate_ts = dt.now()
-
-                async_res = []
-                for (paragraph_id, line_id), slices, rotation in async_slices:
-                    y, x = slices.get()
-                    for array_id in range(len(arrays)):
-                        index = (array_id, paragraph_id, line_id)
-                        r = pool.apply_async(self._func2, (
-                            arrays[array_id][paragraph_id], y, x, rotation,
-                            self.zoomed_height, self.minimal_width))
-                        async_res.append((index, r))
-
-                self.timers['slices'] += dt.now() - slices_ts
-
-                for (array_id, paragraph_id, line_id), res in async_res:
-                    result[array_id][paragraph_id][line_id] = res.get()
-                self.timers['crop_and_rotate'] += dt.now() - crop_and_rotate_ts
-
+                result = self._func(pool, *args, **kwargs)
                 put_to_queue(self.output_queue, result)
+
+    def _func(self, pool, *args, **kwargs):
+        raise NotImplementedError()
+
+
+class CropRotateAndZoomLines(BaseWorkersPool):
+    def __init__(self, workers_count=None, zoomed_height=None, minimal_width=None):
+        super().__init__(workers_count)
+        self.zoomed_height = zoomed_height
+        self.minimal_width = minimal_width
+        self.timers = {
+            'mask_mean': dt.now() - dt.now(),
+            'rearrange': dt.now() - dt.now(),
+            'slices': dt.now() - dt.now(),
+            'crop_and_rotate': dt.now() - dt.now(),
+        }
+
+    def __call__(self, masks, arrays):
+        return super().__call__(masks, arrays)
+
+    def _func(self, pool, masks, arrays):
+        def thresholded(arr):
+            return arr > 0.5 * (np.mean(arr) + np.max(arr))
+
+        rearrange_ts = dt.now()
+
+        async_rearranged = []
+        for mask, *subarrays in zip(masks, *arrays):
+            mask_mean_ts = dt.now()
+            try:
+                top = thresholded(mask[:, :, :, 0:1])
+                center = thresholded(mask[:, :, :, 1:2])
+                bottom = thresholded(mask[:, :, :, 2:3])
+            except TypeError:
+                exit(0)
+            self.timers['mask_mean'] += dt.now() - mask_mean_ts
+
+            r = pool.apply_async(rearrange_lines, (
+                label_layer(top), label_layer(center), label_layer(bottom)))
+            async_rearranged.append(r)
+
+        slices_ts = dt.now()
+
+        async_slices = []
+        result = [[] for array in arrays]
+        for paragraph_id, _ in enumerate(zip(*arrays)):
+            for array_id in range(len(arrays)):
+                result[array_id].append([])
+            top_mask, center_mask, bottom_mask, rotation = (
+                async_rearranged[paragraph_id].get())
+            for line_id in range(len(top_mask)):
+                for array_id in range(len(arrays)):
+                    result[array_id][paragraph_id].append(None)
+                index = (paragraph_id, line_id)
+                r = pool.apply_async(self._func1, (
+                    top_mask[line_id], center_mask[line_id], bottom_mask[line_id]))
+                async_slices.append((index, r, rotation))
+
+        self.timers['rearrange'] += dt.now() - rearrange_ts
+        crop_and_rotate_ts = dt.now()
+
+        async_res = []
+        for (paragraph_id, line_id), slices, rotation in async_slices:
+            y, x = slices.get()
+            for array_id in range(len(arrays)):
+                index = (array_id, paragraph_id, line_id)
+                r = pool.apply_async(self._func2, (
+                    arrays[array_id][paragraph_id], y, x, rotation,
+                    self.zoomed_height, self.minimal_width))
+                async_res.append((index, r))
+
+        self.timers['slices'] += dt.now() - slices_ts
+
+        for (array_id, paragraph_id, line_id), res in async_res:
+            result[array_id][paragraph_id][line_id] = res.get()
+        self.timers['crop_and_rotate'] += dt.now() - crop_and_rotate_ts
+
+        return result
 
     @staticmethod
     def _func1(top_mask, center_mask, bottom_mask):
