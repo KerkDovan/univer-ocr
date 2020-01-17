@@ -10,7 +10,7 @@ from ..nn.help_func import make_list_if_not
 from .constants import (
     LAYER_NAMES, LAYER_NAMES_PLAIN, LAYER_NAMES_PLAIN_IDS, LAYER_TAGS, TRAIN_DATA_PATH,
     TRAIN_DATASET_LENGTH, VALIDATION_DATA_PATH, VALIDATION_DATASET_LENGTH)
-from .train_data_generator import generate_picture
+from .train_data_generator import encode_layers, generate_picture
 
 
 def encode_X(image):
@@ -39,19 +39,6 @@ def encode_ys(images):
         y = np.reshape(y, (1, *y.shape)) / 255
         ys.append(y)
     return ys
-
-
-def encode_layers(images):
-    layers = {}
-    for tag in LAYER_TAGS:
-        layer = np.array([
-            np.asarray(images[layer_name].convert('L'))
-            for layer_name in LAYER_NAMES[tag]
-        ])
-        layer = np.moveaxis(layer, 0, -1)
-        layer = np.reshape(layer, (1, *layer.shape)) / 255
-        layers[tag] = layer
-    return layers
 
 
 def decode_y(y, normalize=False):
@@ -128,7 +115,7 @@ class Dataset(BaseDataset):
             if layer_tags is None or layer_name in layer_names
         }
         layer_images = {
-            layer_name: Image.open(layer_path).convet('L')
+            layer_name: Image.open(layer_path).convert('L')
             for layer_name, layer_path in layer_paths.items()
         }
         return layer_images

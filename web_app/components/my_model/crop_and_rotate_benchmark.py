@@ -9,7 +9,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from ..interpreter import MP, CropAndRotateParagraphs, CropRotateAndZoomLines
-from .constants import GENERATED_FILES_PATH, OUTPUT_LAYER_NAMES_PLAIN_IDS
+from .constants import GENERATED_FILES_PATH
 from .datasets import train_dataset
 
 
@@ -30,22 +30,22 @@ def benchmark_one(dirpath, workers_count):
     total_line_crop_time = dt.now() - dt.now()
     total_save_time = dt.now() - dt.now()
 
-    crop_and_rotate_paragraphs = CropAndRotateParagraphs(workers_count)
+    crop_and_rotate_paragraphs = CropAndRotateParagraphs(workers_count, False)
     crop_rotate_and_zoom_lines = CropRotateAndZoomLines(workers_count, 32, 200)
     print(f'Workers count: {workers_count}')
 
     for i in tqdm(range(len(train_dataset)), ascii=True):
-        X, ys = train_dataset.get_images(i)
-        monochrome = to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS['image_monochrome']])
-        line_top = to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS['line_top']])
-        line_center = to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS['line_center']])
-        line_bottom = to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS['line_bottom']])
+        layers = train_dataset.get_images(i)
+        monochrome = to_array(layers['image_monochrome'])
+        line_top = to_array(layers['line_top'])
+        line_center = to_array(layers['line_center'])
+        line_bottom = to_array(layers['line_bottom'])
         line = np.concatenate([line_top, line_center, line_bottom], axis=3)
         bits_and_letter_spacings = np.concatenate([
-            *[to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS[f'bit_{i}']]) for i in range(8)],
-            to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS['letter_spacing']])
+            *[to_array(layers[f'bit_{i}']) for i in range(8)],
+            to_array(layers['letter_spacing'])
         ], axis=3)
-        mask = to_array(ys[OUTPUT_LAYER_NAMES_PLAIN_IDS['paragraph']])
+        mask = to_array(layers['paragraph'])
 
         ts = dt.now()
         paragraphs = crop_and_rotate_paragraphs(

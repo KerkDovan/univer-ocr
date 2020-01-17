@@ -6,7 +6,7 @@ from queue import Empty, Full
 import numpy as np
 
 from ..image_generator import LayeredImage, random_font, random_text
-from .constants import INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES
+from .constants import LAYER_TAGS, LAYER_NAMES
 
 
 def generate_picture(width, height, rotate=False):
@@ -20,14 +20,21 @@ def generate_picture(width, height, rotate=False):
     return layers.get_raw()
 
 
+def encode_layers(images):
+    layers = {}
+    for tag in LAYER_TAGS:
+        layer = np.array([
+            np.asarray(images[layer_name].convert('L'))
+            for layer_name in LAYER_NAMES[tag]
+        ])
+        layer = np.moveaxis(layer, 0, -1)
+        layer = np.reshape(layer, (1, *layer.shape)) / 255
+        layers[tag] = layer
+    return layers
+
+
 def generate_train_data(width, height, rotate=False):
-    picture = generate_picture(width, height, rotate)
-    X = np.array(picture[INPUT_LAYER_NAME])
-    y = np.array([np.array(picture[name]) for name in OUTPUT_LAYER_NAMES])
-    y = np.moveaxis(y, 0, -1)
-    X = np.reshape(X, (1, *X.shape)) / 255
-    y = np.reshape(y, (1, *y.shape)) / 255
-    return X, y
+    return encode_layers(generate_picture(width, height, rotate))
 
 
 class DataGenerator:
