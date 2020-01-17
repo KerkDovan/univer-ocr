@@ -4,33 +4,33 @@ from ..image_generator import LayeredImage
 from ..primitives import BITS_COUNT
 
 ALL_LAYER_NAMES = LayeredImage.layer_names
-INPUT_LAYER_NAME = 'image'
-OUTPUT_LAYER_TAGS = [
+LAYER_TAGS = [
+    'image',
     'monochrome',
     'paragraph',
     'line',
-    'letter_spacing',
-    'char_box',
-    'bit',
+    'char',
 ]
-OUTPUT_LAYER_TAGS_IDS = {
-    name: i for i, name in enumerate(OUTPUT_LAYER_TAGS)
+LAYER_TAGS_IDS = {
+    name: i for i, name in enumerate(LAYER_TAGS)
 }
-OUTPUT_LAYER_NAMES = {
-    OUTPUT_LAYER_TAGS[0]: ['image_monochrome'],
-    OUTPUT_LAYER_TAGS[1]: ['paragraph'],
-    OUTPUT_LAYER_TAGS[2]: ['line_top', 'line_center', 'line_bottom'],
-    OUTPUT_LAYER_TAGS[3]: ['letter_spacing'],
-    OUTPUT_LAYER_TAGS[4]: ['char_mask_box', 'char_full_box'],
-    OUTPUT_LAYER_TAGS[5]: [f'bit_{i}' for i in range(BITS_COUNT)],
+LAYER_NAMES = {
+    LAYER_TAGS[0]: ['image'],
+    LAYER_TAGS[1]: ['image_monochrome'],
+    LAYER_TAGS[2]: ['paragraph'],
+    LAYER_TAGS[3]: ['line_top', 'line_center', 'line_bottom'],
+    LAYER_TAGS[4]: [
+        *[f'bit_{i}' for i in range(BITS_COUNT)],
+        'letter_spacing',
+    ]
 }
-OUTPUT_LAYER_NAMES_PLAIN = [
+LAYER_NAMES_PLAIN = [
     name
-    for tag in OUTPUT_LAYER_TAGS
-    for name in OUTPUT_LAYER_NAMES[tag]
+    for tag in LAYER_TAGS
+    for name in LAYER_NAMES[tag]
 ]
-OUTPUT_LAYER_NAMES_PLAIN_IDS = {
-    name: i for i, name in enumerate(OUTPUT_LAYER_NAMES_PLAIN)
+LAYER_NAMES_PLAIN_IDS = {
+    name: i for i, name in enumerate(LAYER_NAMES_PLAIN)
 }
 
 MODEL_WEIGHTS_FILE_PATH = Path('web_app', 'components', 'my_model', 'model_weights.json')

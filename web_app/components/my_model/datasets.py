@@ -8,9 +8,8 @@ from PIL import Image
 from ..nn.gpu import CP
 from ..nn.help_func import make_list_if_not
 from .constants import (
-    INPUT_LAYER_NAME, OUTPUT_LAYER_NAMES, OUTPUT_LAYER_NAMES_PLAIN, OUTPUT_LAYER_NAMES_PLAIN_IDS,
-    OUTPUT_LAYER_TAGS, TRAIN_DATA_PATH, TRAIN_DATASET_LENGTH, VALIDATION_DATA_PATH,
-    VALIDATION_DATASET_LENGTH)
+    LAYER_NAMES, LAYER_NAMES_PLAIN, LAYER_NAMES_PLAIN_IDS, LAYER_TAGS, TRAIN_DATA_PATH,
+    TRAIN_DATASET_LENGTH, VALIDATION_DATA_PATH, VALIDATION_DATASET_LENGTH)
 from .train_data_generator import generate_picture
 
 
@@ -31,15 +30,28 @@ def decode_X(X):
 def encode_ys(images):
     ys = []
     idx = 0
-    for tag in OUTPUT_LAYER_TAGS:
+    for tag in LAYER_TAGS:
         y = []
-        for _ in OUTPUT_LAYER_NAMES[tag]:
+        for _ in LAYER_NAMES[tag]:
             y.append(np.asarray(images[idx]))
             idx += 1
         y = np.moveaxis(y, 0, -1)
         y = np.reshape(y, (1, *y.shape)) / 255
         ys.append(y)
     return ys
+
+
+def encode_layers(images):
+    layers = {}
+    for tag in LAYER_TAGS:
+        layer = np.array([
+            np.asarray(images[layer_name].convert('L'))
+            for layer_name in LAYER_NAMES[tag]
+        ])
+        layer = np.moveaxis(layer, 0, -1)
+        layer = np.reshape(layer, (1, *layer.shape)) / 255
+        layers[tag] = layer
+    return layers
 
 
 def decode_y(y, normalize=False):
@@ -73,17 +85,30 @@ def decode_ys(ys, normalize=False):
     return pred_images, thresholded_images
 
 
+def get_layer_names(layer_tags=None):
+    layer_names = [
+        name
+        for tag in LAYER_TAGS
+        if layer_tags is None or tag in layer_tags
+        for name in LAYER_NAMES[tag]
+    ]
+    return layer_names
+
+
 class BaseDataset:
     def __init__(self, size):
         self.size = size
 
-    def get(self, idx, X_image=None, y_images=None):
-        if X_image is None or y_images is None:
-            X_image, y_images = self.get_images(idx)
-        X, ys = encode_X(X_image), encode_ys(y_images)
-        return CP.copy(X), [CP.copy(y) for y in ys]
+    def get(self, idx, layer_images=None, layer_tags=None):
+        if layer_images is None:
+            layer_images = self.get_images(idx, layer_tags=layer_tags)
+        elif layer_tags is not None:
+            layer_names = get_layer_names(layer_tags)
+            layer_images = {name: layer_images[name] for name in layer_names}
+        layers = encode_layers(layer_images)
+        return layers
 
-    def get_images(self, idx):
+    def get_images(self, idx, layer_tags=None):
         raise NotImplementedError()
 
     def __len__(self):
@@ -95,15 +120,18 @@ class Dataset(BaseDataset):
         super().__init__(size)
         self.dirpath = dirpath
 
-    def get_images(self, idx):
-        X_path = self.dirpath / f'{idx}_image.png'
-        y_paths = [
-            self.dirpath / f'{idx}_{layer_name}.png'
-            for layer_name in OUTPUT_LAYER_NAMES_PLAIN
-        ]
-        X_image = Image.open(X_path).convert('L')
-        y_images = [Image.open(y_path) for y_path in y_paths]
-        return X_image, y_images
+    def get_images(self, idx, layer_tags=None):
+        layer_names = get_layer_names(layer_tags)
+        layer_paths = {
+            layer_name: self.dirpath / f'{idx}_{layer_name}.png'
+            for layer_name in LAYER_NAMES_PLAIN
+            if layer_tags is None or layer_name in layer_names
+        }
+        layer_images = {
+            layer_name: Image.open(layer_path).convet('L')
+            for layer_name, layer_path in layer_paths.items()
+        }
+        return layer_images
 
 
 class GeneratorDataset(BaseDataset):
@@ -112,13 +140,17 @@ class GeneratorDataset(BaseDataset):
         self.width = width
         self.height = height
 
-    def get_images(self, idx, width=None, height=None):
+    def get_images(self, idx, layer_tags=None, width=None, height=None, rotate=False):
         width = self.width if width is None else width
         height = self.height if height is None else height
-        picture = generate_picture(width, height)
-        X_image = picture[INPUT_LAYER_NAME].convert('L')
-        y_images = [picture[layer_name] for layer_name in OUTPUT_LAYER_NAMES_PLAIN]
-        return X_image, y_images
+        picture = generate_picture(width, height, rotate)
+        layer_names = get_layer_names(layer_tags)
+        layer_images = {
+            layer_name: image.convert('L')
+            for layer_name, image in picture.items()
+            if layer_name in layer_names
+        }
+        return layer_images
 
 
 class RandomSelectDataset(BaseDataset):
@@ -131,8 +163,8 @@ class RandomSelectDataset(BaseDataset):
             if idx not in self.selected:
                 self.selected.append(idx)
 
-    def get_images(self, idx):
-        return self.source_dataset.get_images(self.selected[idx])
+    def get_images(self, idx, layer_tags=None):
+        return self.source_dataset.get_images(self.selected[idx], layer_tags=layer_tags)
 
 
 train_dataset = Dataset(TRAIN_DATASET_LENGTH, TRAIN_DATA_PATH)
@@ -140,9 +172,10 @@ validation_dataset = Dataset(VALIDATION_DATASET_LENGTH, VALIDATION_DATA_PATH)
 
 
 def save_pictures(save_path, X_image, y_images, pred_images, th_images, prefix=''):
-    image_monochrome = pred_images[OUTPUT_LAYER_NAMES_PLAIN_IDS['image_monochrome']]
+    return
+    image_monochrome = pred_images[LAYER_NAMES_PLAIN_IDS['image_monochrome']]
     for i in range(len(pred_images)):
-        layer_name = OUTPUT_LAYER_NAMES_PLAIN[i]
+        layer_name = LAYER_NAMES_PLAIN[i]
         sp = save_path / layer_name
         sp.mkdir(parents=True, exist_ok=True)
         if layer_name == 'image_monochrome':
@@ -156,6 +189,7 @@ def save_pictures(save_path, X_image, y_images, pred_images, th_images, prefix='
 
 
 def save_layers_outputs_pictures(save_path, layers_outputs):
+    return
     if save_path.exists():
         for path in save_path.iterdir():
             if path.is_dir():

@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 
 import numpy as np
 
@@ -16,7 +17,7 @@ from ..nn.optimizers import Adam
 from ..nn.progress_tracker import track_function
 from ..nn.regularizations import L2
 from ..primitives import CHARS
-from .constants import OUTPUT_LAYER_NAMES, OUTPUT_LAYER_TAGS
+from .constants import LAYER_NAMES, LAYER_TAGS_IDS
 
 
 def make_divisible_by(arr, y, x):
@@ -110,7 +111,7 @@ def make_monochrome(input_shape, optimizer=None):
         'trainable': True,
     }
 
-    ch_count = [16, len(OUTPUT_LAYER_NAMES['monochrome'])]
+    ch_count = [16, len(LAYER_NAMES['monochrome'])]
 
     layers = {
         'Monochrome': make_conv_block(
@@ -145,7 +146,7 @@ def make_paragraph(input_shape, optimizer=None):
     ch_count_ups = [
         None, [1], [1],
     ]
-    ch_count_end = [len(OUTPUT_LAYER_NAMES['paragraph'])]
+    ch_count_end = [len(LAYER_NAMES['paragraph'])]
 
     layers = {
         **{
@@ -202,7 +203,7 @@ def make_line(input_shape, optimizer=None):
     ch_count_ups = [
         None, [4], [4],
     ]
-    ch_count_end = [len(OUTPUT_LAYER_NAMES['line'])]
+    ch_count_end = [len(LAYER_NAMES['line'])]
 
     layers = {
         **{
@@ -264,7 +265,7 @@ def make_dense_block(out_counts, **kwargs):
     return Model(layers, relations)
 
 
-def make_chars(input_shape, optimizer=None):
+def make_char(input_shape, optimizer=None):
     batch_size, height, width, in_channels = input_shape
     optimizer = Adam(lr=1e-2) if optimizer is None else optimizer
 
@@ -292,65 +293,8 @@ def make_chars(input_shape, optimizer=None):
     }
 
     model = wrap(
-        'Chars', Model(layers=layers, relations=relations),
+        'Char', Model(layers=layers, relations=relations),
         loss=SoftmaxCrossEntropy())
-    model.initialize(input_shape)
-
-    return model
-
-
-def make_letter_spacing(input_shape, optimizer=None):
-    batch_size, height, width, in_channels = input_shape
-    optimizer = Adam(lr=1e-2) if optimizer is None else optimizer
-
-    kwargs = {
-        'optimizer': optimizer,
-        'trainable': True,
-    }
-
-    ch_count_downs = [
-        None, [16],
-    ]
-    ch_count_ups = [
-        None, [16],
-    ]
-    ch_count_end = [len(OUTPUT_LAYER_NAMES['letter_spacing'])]
-
-    layers = {
-        **{
-            f'down_{i}': make_conv_block(
-                ch_count_downs[i],
-                kernel_size=(5, 5), padding=2, stride=2, **kwargs)
-            for i in range(1, len(ch_count_downs))
-        },
-        **{
-            f'up_{i}': make_single_up(
-                ch_count_ups[i],
-                kernel_size=(5, 5), padding=2, **kwargs)
-            for i in range(1, len(ch_count_ups))
-        },
-        'end': make_conv_block(
-            ch_count_end, last_sigmoid=True,
-            kernel_size=(5, 5), padding=2, **kwargs),
-    }
-    relations = {
-        'down_1': 0,
-        **{
-            f'down_{i + 1}': f'down_{i}'
-            for i in range(1, len(ch_count_downs) - 1)
-        },
-        f'up_{len(ch_count_ups) - 1}': f'down_{len(ch_count_downs) - 1}',
-        **{
-            f'up_{i}': f'up_{i + 1}'
-            for i in range(1, len(ch_count_ups) - 1)
-        },
-        'end': 'up_1',
-        0: 'end',
-    }
-
-    model = wrap(
-        'LetterSpacing', Model(layers=layers, relations=relations),
-        loss=SegmentationDice2D())
     model.initialize(input_shape)
 
     return model
@@ -395,6 +339,13 @@ def put_to_context(context, labels, values):
         context[label] = value
 
 
+def make_rename_in_context_component(labels):
+    def rename_in_context(context):
+        for old_label, new_label in labels:
+            context[new_label] = context[old_label]
+    return RawFunctionComponent(rename_in_context)
+
+
 class LineSelector(IterableSelector):
     def __init__(self, X_label, y_label, pred_label):
         super().__init__(X_label, y_label, pred_label)
@@ -417,7 +368,7 @@ class LineSelector(IterableSelector):
         self.context[self.pred_label][self.paragraph_id] = pred
 
 
-class LetterSpacingSelector(IterableSelector):
+class CharSelector(IterableSelector):
     def __init__(self, X_label, y_label, pred_label):
         super().__init__(X_label, y_label, pred_label)
         self.paragraph_id = 0
@@ -445,170 +396,297 @@ class LetterSpacingSelector(IterableSelector):
         self.context[self.pred_label][self.paragraph_id][self.line_id] = pred
 
 
-def make_model_system(input_shape, optimizer=None, progress_tracker=None, weights=None):
-    if True:
-        monochrome_label_1 = 'monochrome_y'
-        monochrome_label_2 = 'cropped_1_monochrome_y'
-        monochrome_label_3 = 'cropped_2_monochrome_y'
-        line_label_1 = 'line_y'
-        line_label_2 = 'cropped_1_line_y'
+class Modes(Enum):
+    TRAIN_MONOCHROME = 0
+    TRAIN_PARAGRAPH = 1
+    TRAIN_LINE = 2
+    TRAIN_CHAR = 3
+    TRAIN_ALL = 4
+    PREDICT = 5
+
+
+def make_context_maker(mode):
+    def to_gpu(arr):
+        if CP.is_gpu_used:
+            return CP.copy(arr)
+        return arr
+
+    if mode is Modes.TRAIN_MONOCHROME:
+        def make_context(dataset_get_func, args=(), kwargs={}):
+            layer_tags = ['image', 'monochrome']
+            layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
+            context = {
+                'monochrome_X': to_gpu(layers['image']),
+                'monochrome_y': to_gpu(layers[LAYER_TAGS_IDS['monochrome']]),
+            }
+            return context
+
+    elif mode is Modes.TRAIN_PARAGRAPH:
+        def make_context(dataset_get_func, args=(), kwargs={}):
+            layer_tags = ['monochrome', 'paragraph']
+            layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
+            context = {
+                'paragraph_X': to_gpu(layers[LAYER_TAGS_IDS['monochrome']]),
+                'paragraph_y': to_gpu(layers[LAYER_TAGS_IDS['paragraph']]),
+            }
+            return context
+
+    elif mode is Modes.TRAIN_LINE:
+        def make_context(dataset_get_func, args=(), kwargs={}):
+            layer_tags = ['monochrome', 'paragraph', 'line']
+            layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
+            context = {
+                'monochrome_pred_cpu': layers[LAYER_TAGS_IDS['monochrome']],
+                'paragraph_pred_cpu': layers[LAYER_TAGS_IDS['paragraph']],
+                'line_cpu': layers[LAYER_TAGS_IDS['line']],
+            }
+            return context
+
+    elif mode is Modes.TRAIN_CHAR:
+        def make_context(dataset_get_func, args=(), kwargs={}):
+            layer_tags = ['monochrome', 'paragraph', 'line', 'char']
+            layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
+            context = {
+                'monochrome_pred_cpu': layers[LAYER_TAGS_IDS['monochrome']],
+                'paragraph_pred_cpu': layers[LAYER_TAGS_IDS['paragraph']],
+                'line_pred_cpu': layers[LAYER_TAGS_IDS['line']],
+                'char_cpu': layers[LAYER_TAGS_IDS['char']],
+            }
+            return context
+
+    elif mode is Modes.TRAIN_ALL:
+        def make_context(dataset_get_func, args=(), kwargs={}):
+            layer_tags = ['image', 'monochrome', 'paragraph', 'line', 'char']
+            layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
+            context = {
+                'monochrome_X': to_gpu(layers['image']),
+                'monochrome_y': to_gpu(layers[LAYER_TAGS_IDS['monochrome']]),
+                'paragraph_y': to_gpu(layers[LAYER_TAGS_IDS['paragraph']]),
+                'line_cpu': layers[LAYER_TAGS_IDS['line']],
+                'char_cpu': layers[LAYER_TAGS_IDS['char']],
+            }
+            return context
 
     else:
-        monochrome_label_1 = 'monochrome_pred'
-        monochrome_label_2 = 'cropped_1_monochrome_pred'
-        monochrome_label_3 = 'cropped_2_monochrome_pred'
-        line_label_1 = 'line_pred'
-        line_label_2 = 'cropped_1_line_pred'
+        def make_context(dataset_get_func, args=(), kwargs={}):
+            layer_tags = ['image']
+            layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
+            context = {
+                'monochrome_X': to_gpu(layers['image']),
+            }
+            return context
 
-    monochrome_label_1_cpu = monochrome_label_1 + '_cpu'
-    monochrome_label_2_cpu = monochrome_label_2 + '_cpu'
-    monochrome_label_3_cpu = monochrome_label_3 + '_cpu'
-    line_label_1_cpu = line_label_1 + '_cpu'
-    line_label_2_cpu = line_label_2 + '_cpu'
+    return make_context
 
-    monochrome = ModelComponent(
-        'Monochrome', make_monochrome(input_shape, optimizer),
-        StringSelector('X', 'monochrome_y', 'monochrome_pred'))
-    monochrome_output_shapes = monochrome.model.get_output_shapes(input_shape)[0]
 
-    paragraph = ModelComponent(
-        'Paragraph', make_paragraph(monochrome_output_shapes, optimizer),
-        StringSelector(monochrome_label_1, 'paragraph_y', 'paragraph_pred'))
-    paragraph_output_shapes = paragraph.model.get_output_shapes(monochrome_output_shapes)[0]
-
-    move_from_gpu_1 = make_move_from_gpu_component([
-        ('paragraph_y', 'paragraph_y_cpu'),
-        (monochrome_label_1, monochrome_label_1_cpu),
-        (line_label_1, line_label_1_cpu),
-        ('letter_spacing_y', 'letter_spacing_y_cpu'),
-    ])
-
-    crop_and_rotate_paragraphs = CropAndRotateParagraphs(min(4, os.cpu_count()))
-
-    @track_function('ParagraphCrop', 'forward', progress_tracker)
-    def paragraph_crop_func(context):
-        def make_subelements_divisible_by(arrays, y, x):
-            return [
-                [make_divisible_by(t, y, x) for t in array]
-                for array in arrays
-            ]
-        mask, *arrays = get_from_context(context, [
-            'paragraph_y_cpu',
-            monochrome_label_1_cpu, line_label_1_cpu, 'letter_spacing_y_cpu'
+def make_model_system(input_shape, optimizer=None, progress_tracker=None, weights=None,
+                      mode=Modes.PREDICT):
+    def get_result(components):
+        order = [
+            'Monochrome',
+            'Paragraph', 'move_from_gpu_paragraph',
+            'ParagraphCrop', 'move_to_gpu_paragraph_crop',
+            'Line', 'move_from_gpu_line',
+            'LineCrop',
+            'CharLabel', 'move_to_gpu_char_label',
+            'Char', 'move_from_gpu_char',
+            'PredToText',
+            'Sleep1', 'Sleep2',
+        ]
+        model_system = ModelSystem([
+            components[component_name]
+            for component_name in order
+            if component_name in components.keys()
         ])
-        results = make_subelements_divisible_by(
-            crop_and_rotate_paragraphs(mask, arrays), 16, 16)
-        put_to_context(context, [
-            monochrome_label_2_cpu, line_label_2_cpu, 'cropped_1_letter_spacing_y_cpu'
-        ], results)
-    paragraph_crop = RawFunctionComponent(paragraph_crop_func)
+        models = {
+            model_name: components[model_name].model
+            for model_name in ['Monochrome', 'Paragraph', 'Line', 'Char']
+            if model_name in components.keys()
+        }
+        for model_name, model in models.items():
+            if progress_tracker is not None:
+                model.init_progress_tracker(progress_tracker, model_name)
+            if weights is not None:
+                model.set_weights(weights)
+        names = [
+            component_name
+            for component_name in order
+            if component_name in [
+                'Monochrome',
+                'Paragraph',
+                'ParagraphCrop',
+                'Line',
+                'LineCrop',
+                'CharLabel',
+                'Char',
+                'PredToText',
+                'Sleep1', 'Sleep2',
+            ] and component_name in components.keys()
+        ]
+        return model_system, models, names
 
-    move_to_gpu_1 = make_move_to_gpu_component([
-        ('cropped_1_monochrome_y_cpu', 'cropped_1_monochrome_y'),
-        (line_label_2_cpu, line_label_2),
-    ])
+    def make_monochrome_component():
+        monochrome = ModelComponent(
+            'Monochrome', make_monochrome(input_shape, optimizer),
+            StringSelector('monochrome_X', 'monochrome_y', 'monochrome_pred'))
+        return monochrome
 
-    line = ModelComponent(
-        'Line', make_line(paragraph_output_shapes, optimizer),
-        LineSelector(monochrome_label_2, line_label_2, 'cropped_1_line_pred'))
-    line_output_shapes = line.model.get_output_shapes(paragraph_output_shapes)[0]
+    if mode is Modes.TRAIN_MONOCHROME:
+        return get_result({'Monochrome': make_monochrome_component()})
 
-    move_from_gpu_2 = make_move_from_gpu_component([
-        (line_label_2, line_label_2_cpu),
-    ])
+    def make_paragraph_component():
+        paragraph = ModelComponent(
+            'Paragraph', make_paragraph(input_shape, optimizer),
+            StringSelector('paragraph_X', 'paragraph_y', 'paragraph_pred'))
+        return paragraph
 
-    crop_rotate_and_zoom_lines = CropRotateAndZoomLines(min(4, os.cpu_count()), 32, 32)
+    if mode is Modes.TRAIN_PARAGRAPH:
+        return get_result({'Paragraph': make_paragraph_component()})
 
-    @track_function('LineCrop', 'forward', progress_tracker)
-    def line_crop_func(context):
-        def make_subelements_divisible_by(arrays, y, x):
-            return [
-                [
-                    [make_divisible_by(line, y, x) for line in paragraph]
-                    for paragraph in array
+    def make_paragraph_crop_component():
+        crop_and_rotate_paragraphs = CropAndRotateParagraphs(min(4, os.cpu_count()))
+
+        @track_function('ParagraphCrop', 'forward', progress_tracker)
+        def paragraph_crop_func(context):
+            def make_subelements_divisible_by(arrays, y, x):
+                return [
+                    [make_divisible_by(t, y, x) for t in array]
+                    for array in arrays
                 ]
-                for array in arrays
-            ]
+            mask, *arrays = get_from_context(context, [
+                'paragraph_pred_cpu',
+                'monochrome_pred_cpu', 'line_cpu', 'char_cpu',
+            ])
+            results = make_subelements_divisible_by(
+                crop_and_rotate_paragraphs(mask, arrays), 16, 16)
+            put_to_context(context, [
+                'cropped_monochrome_cpu', 'cropped_line_cpu', 'cropped_char_cpu',
+            ], results)
+        paragraph_crop = RawFunctionComponent(paragraph_crop_func)
+        return paragraph_crop
 
-        masks, *arrays = get_from_context(context, [
-            line_label_2_cpu,
-            'cropped_1_monochrome_y_cpu', 'cropped_1_letter_spacing_y_cpu'
-        ])
+    def make_line_component():
+        line = ModelComponent(
+            'Line', make_line(input_shape, optimizer),
+            LineSelector('cropped_monochrome', 'cropped_line', 'line_pred'))
+        return line
 
-        results = make_subelements_divisible_by(
-            crop_rotate_and_zoom_lines(masks, arrays), 16, 16)
+    if mode is Modes.TRAIN_LINE:
+        return get_result({
+            'ParagraphCrop': make_paragraph_crop_component(),
+            'move_to_gpu_paragraph_crop': make_move_to_gpu_component([
+                ('cropped_monochrome_cpu', 'cropped_monochrome'),
+                ('cropped_line_cpu', 'cropped_line'),
+            ]),
+            'Line': make_line_component(),
+        })
 
-        put_to_context(context, [
-            monochrome_label_3_cpu, 'cropped_2_letter_spacing_y_cpu'
-        ], results)
-    line_crop = RawFunctionComponent(line_crop_func)
+    def make_line_crop_component():
+        crop_rotate_and_zoom_lines = CropRotateAndZoomLines(min(8, os.cpu_count()), 32, 32)
 
-    move_to_gpu_2 = make_move_to_gpu_component([
-        (monochrome_label_3_cpu, monochrome_label_3),
-        ('cropped_2_letter_spacing_y_cpu', 'cropped_2_letter_spacing_y'),
-    ])
+        @track_function('LineCrop', 'forward', progress_tracker)
+        def line_crop_func(context):
+            def make_subelements_divisible_by(arrays, y, x):
+                return [
+                    [
+                        [make_divisible_by(line, y, x) for line in paragraph]
+                        for paragraph in array
+                    ]
+                    for array in arrays
+                ]
 
-    letter_spacing = ModelComponent(
-        'LetterSpacing', make_letter_spacing(line_output_shapes, optimizer),
-        LetterSpacingSelector(
-            monochrome_label_3,
-            'cropped_2_letter_spacing_y',
-            'cropped_2_letter_spacing_pred'))
+            masks, *arrays = get_from_context(context, [
+                'line_pred_cpu',
+                'cropped_monochrome_cpu', 'cropped_char_cpu',
+            ])
+
+            results = make_subelements_divisible_by(
+                crop_rotate_and_zoom_lines(masks, arrays), 16, 16)
+
+            put_to_context(context, [
+                'cropped_2_monochrome_cpu', 'cropped_2_char_cpu',
+            ], results)
+        line_crop = RawFunctionComponent(line_crop_func)
+        return line_crop
+
+    def make_char_label_component():
+        @track_function('CharLabel', 'forward', progress_tracker)
+        def char_label_func(context):
+            pass
+        char_label = RawFunctionComponent(char_label_func)
+        return char_label
+
+    def make_char_component():
+        char = ModelComponent(
+            'Char', make_line(input_shape, optimizer),
+            CharSelector('cropped_2_monochrome', 'char_labels', 'char_pred'))
+        return char
+
+    if mode is Modes.TRAIN_CHAR:
+        return get_result({
+            'ParagraphCrop': make_paragraph_crop_component(),
+            'rename_line': make_rename_in_context_component([
+                ('cropped_line_cpu', 'line_pred_cpu'),
+            ]),
+            'LineCrop': make_line_crop_component(),
+            'CharLabel': make_char_label_component(),
+            'move_to_gpu_char_label': make_move_to_gpu_component([
+                ('cropped_2_monochrome_cpu', 'cropped_2_monochrome'),
+                ('char_labels_cpu', 'char_labels'),
+            ]),
+            'Char': make_char_component(),
+        })
+
+    def make_pred_to_text_component():
+        @track_function('PredToText', 'forward', progress_tracker)
+        def pred_to_text_func(context):
+            pass
+        pred_to_text = RawFunctionComponent(pred_to_text_func)
+        return pred_to_text
+
+    if mode in [Modes.TRAIN_ALL, Modes.PREDICT]:
+        components = {
+            'Monochrome': make_monochrome_component(),
+            'Paragraph': make_paragraph_component(),
+            'move_from_gpu_paragraph': make_move_from_gpu_component([
+                ('monochrome_pred', 'monochrome_pred_cpu'),
+                ('paragraph_pred', 'paragraph_pred_cpu'),
+            ]),
+            'ParagraphCrop': make_paragraph_crop_component(),
+            'move_to_gpu_paragraph_crop': make_move_to_gpu_component([
+                ('cropped_monochrome_cpu', 'cropped_monochrome'),
+                ('cropped_line_cpu', 'cropped_line'),
+            ]),
+            'Line': make_line_component(),
+            'move_from_gpu_line': make_move_from_gpu_component([
+                ('line_pred', 'line_pred_cpu'),
+            ]),
+            'LineCrop': make_line_crop_component(),
+            'CharLabel': make_char_label_component(),
+            'move_to_gpu_char_label': make_move_to_gpu_component([
+                ('cropped_2_monochrome_cpu', 'cropped_2_monochrome'),
+                ('char_labels_cpu', 'char_labels'),
+            ]),
+            'Char': make_char_component(),
+        }
+        if mode is Modes.PREDICT:
+            components.update({
+                'move_from_gpu_char': make_move_from_gpu_component([
+                    ('char_pred', 'char_pred_cpu'),
+                ]),
+                'PredToText': make_pred_to_text_component(),
+            })
+        return get_result(components)
 
     import time
 
-    @track_function('Sleep1', 'forward', progress_tracker)
-    def sleep1(context):
-        time.sleep(1)
+    def make_sleep_components():
+        @track_function('Sleep1', 'forward', progress_tracker)
+        def sleep1(context):
+            time.sleep(1)
 
-    @track_function('Sleep2', 'forward', progress_tracker)
-    def sleep2(context):
-        time.sleep(2)
+        @track_function('Sleep2', 'forward', progress_tracker)
+        def sleep2(context):
+            time.sleep(2)
 
-    model_system = ModelSystem([
-        monochrome,
-        paragraph,
-        move_from_gpu_1,
-        paragraph_crop,
-        move_to_gpu_1,
-        line,
-        move_from_gpu_2,
-        line_crop,
-        move_to_gpu_2,
-        letter_spacing,
-        # RawFunctionComponent(sleep1),
-        # RawFunctionComponent(sleep2),
-    ])
-
-    models = {
-        'Monochrome': monochrome.model,
-        'Paragraph': paragraph.model,
-        'Line': line.model,
-        'LetterSpacing': letter_spacing.model,
-    }
-    for model_name, model in models.items():
-        if progress_tracker is not None:
-            model.init_progress_tracker(progress_tracker, model_name)
-        if weights is not None:
-            model.set_weights(weights)
-
-    names = [
-        'Monochrome',
-        'Paragraph',
-        'ParagraphCrop',
-        'Line',
-        'LineCrop',
-        'LetterSpacing',
-        'Sleep1',
-        'Sleep2',
-    ]
-
-    return model_system, models, names
-
-
-def make_context(X, ys):
-    context = {
-        'X': X,
-        **{f'{tag}_y': ys[i] for i, tag in enumerate(OUTPUT_LAYER_TAGS)},
-    }
-    return context
+        return sleep1, sleep2
