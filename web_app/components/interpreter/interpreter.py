@@ -237,12 +237,13 @@ class FindObjectHeightInRotated:
 
 
 class CropAndRotateSingleParagraph:
-    def __init__(self, manager, workers_count=None, find_rotation=True):
+    def __init__(self, manager, workers_count=None, find_rotation=True, EPS=1.0):
         self.manager = manager
         self.input_queue = self.manager.Queue()
         self.output_queue = self.manager.Queue()
         self.workers_count = os.cpu_count() if workers_count is None else workers_count
         self.find_rotation = find_rotation
+        self.EPS = EPS
         self.done = MP.mp.Event()
         self.height_finders = [
             FindObjectHeightInRotated(self.manager, self.done)
@@ -259,7 +260,7 @@ class CropAndRotateSingleParagraph:
         ]
         self.workers = [
             MP.Process(target=self._run, daemon=True, args=(
-                self.done, self._func, self.find_rotation,
+                self.done, self._func, self.find_rotation, self.EPS,
                 self.input_queue, self.output_queue, *queues[i]))
             for i in range(self.workers_count)
         ]
@@ -299,7 +300,7 @@ class CropAndRotateSingleParagraph:
         return result
 
     @staticmethod
-    def _run(done, func, find_rotation, input_queue, output_queue,
+    def _run(done, func, find_rotation, EPS, input_queue, output_queue,
              a_in_queue, a_out_queue, b_in_queue, b_out_queue):
         while not done.is_set():
             try:
@@ -311,7 +312,7 @@ class CropAndRotateSingleParagraph:
                     for image in arrays
                 ]
                 result = func(
-                    find_rotation,
+                    find_rotation, EPS,
                     a_in_queue, a_out_queue, b_in_queue, b_out_queue,
                     cropped_mask, cropped_arrays)
                 put_to_queue(output_queue, (label, result))
@@ -321,10 +322,10 @@ class CropAndRotateSingleParagraph:
                 break
 
     @staticmethod
-    def _func(find_rotation, a_in_queue, a_out_queue, b_in_queue, b_out_queue, mask, arrays):
+    def _func(find_rotation, EPS, a_in_queue, a_out_queue, b_in_queue, b_out_queue, mask, arrays):
         if find_rotation:
             low, high = 0.0, 180.0
-            while high - low > 1.0:
+            while high - low > EPS:
                 a = low + (high - low) / 3
                 b = high - (high - low) / 3
                 put_to_queue(a_in_queue, (mask, a))
@@ -336,6 +337,8 @@ class CropAndRotateSingleParagraph:
                 else:
                     low = a
             angle = (high + low) / 2
+            if angle < EPS:
+                angle = None
         else:
             angle = None
 
