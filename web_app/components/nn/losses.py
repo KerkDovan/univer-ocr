@@ -62,7 +62,7 @@ class SoftmaxCrossEntropy(BaseLoss):
 
     def __call__(self, prediction, ground_truth):
         def softmax(X):
-            eX = CP.cp.exp(X - CP.cp.max(X))
+            eX = CP.cp.exp((X.transpose() - CP.cp.max(X, axis=1)).transpose())
             seX = CP.cp.sum(eX, axis=1)
             seX = CP.cp.reshape(seX, (*seX.shape, 1))
             return eX / seX
