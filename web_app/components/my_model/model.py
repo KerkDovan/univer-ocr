@@ -17,7 +17,10 @@ from ..nn.optimizers import Adam
 from ..nn.progress_tracker import track_function
 from ..nn.regularizations import L2
 from ..primitives import CHARS
-from .constants import LAYER_NAMES, LAYER_TAGS_IDS
+from .constants import LAYER_NAMES
+
+CHAR_INPUT_HEIGHT = 32
+CHAR_FIXED_WIDTH = 8
 
 
 def make_divisible_by(arr, y, x):
@@ -266,7 +269,7 @@ def make_dense_block(out_counts, **kwargs):
 
 
 def make_char(input_shape, optimizer=None):
-    batch_size, height, width, in_channels = input_shape
+    batch_size, _, width, in_channels = input_shape
     optimizer = Adam(lr=1e-2) if optimizer is None else optimizer
 
     kwargs = {
@@ -274,13 +277,13 @@ def make_char(input_shape, optimizer=None):
         'trainable': True,
     }
 
-    ch_counts = [64, 128, 256]
+    ch_counts = [64, 64, 64]
     n_counts = [1024, 128, len(CHARS)]
 
     layers = {
         'conv_block': make_conv_block(
             ch_counts, kernel_size=(5, 3), padding=(0, 1), stride=(2, 1), **kwargs),
-        'fixed_width': Conv2DToBatchedFixedWidthed(8),
+        'fixed_width': Conv2DToBatchedFixedWidthed(CHAR_FIXED_WIDTH),
         'flatten': Flatten(),
         'dense_block': make_dense_block(n_counts, **kwargs),
     }
@@ -292,6 +295,7 @@ def make_char(input_shape, optimizer=None):
         0: 'dense_block'
     }
 
+    input_shape = (batch_size, CHAR_INPUT_HEIGHT, width, in_channels)
     model = wrap(
         'Char', Model(layers=layers, relations=relations),
         loss=SoftmaxCrossEntropy())
@@ -417,7 +421,7 @@ def make_context_maker(mode):
             layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
             context = {
                 'monochrome_X': to_gpu(layers['image']),
-                'monochrome_y': to_gpu(layers[LAYER_TAGS_IDS['monochrome']]),
+                'monochrome_y': to_gpu(layers['monochrome']),
             }
             return context
 
@@ -426,8 +430,8 @@ def make_context_maker(mode):
             layer_tags = ['monochrome', 'paragraph']
             layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
             context = {
-                'paragraph_X': to_gpu(layers[LAYER_TAGS_IDS['monochrome']]),
-                'paragraph_y': to_gpu(layers[LAYER_TAGS_IDS['paragraph']]),
+                'paragraph_X': to_gpu(layers['monochrome']),
+                'paragraph_y': to_gpu(layers['paragraph']),
             }
             return context
 
@@ -436,9 +440,9 @@ def make_context_maker(mode):
             layer_tags = ['monochrome', 'paragraph', 'line']
             layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
             context = {
-                'monochrome_pred_cpu': layers[LAYER_TAGS_IDS['monochrome']],
-                'paragraph_pred_cpu': layers[LAYER_TAGS_IDS['paragraph']],
-                'line_cpu': layers[LAYER_TAGS_IDS['line']],
+                'monochrome_pred_cpu': layers['monochrome'],
+                'paragraph_pred_cpu': layers['paragraph'],
+                'line_cpu': layers['line'],
             }
             return context
 
@@ -447,10 +451,10 @@ def make_context_maker(mode):
             layer_tags = ['monochrome', 'paragraph', 'line', 'char']
             layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
             context = {
-                'monochrome_pred_cpu': layers[LAYER_TAGS_IDS['monochrome']],
-                'paragraph_pred_cpu': layers[LAYER_TAGS_IDS['paragraph']],
-                'line_pred_cpu': layers[LAYER_TAGS_IDS['line']],
-                'char_cpu': layers[LAYER_TAGS_IDS['char']],
+                'monochrome_pred_cpu': layers['monochrome'],
+                'paragraph_pred_cpu': layers['paragraph'],
+                'line_cpu': layers['line'],
+                'char_cpu': layers['char'],
             }
             return context
 
@@ -460,10 +464,10 @@ def make_context_maker(mode):
             layers = dataset_get_func(*args, layer_tags=layer_tags, **kwargs)
             context = {
                 'monochrome_X': to_gpu(layers['image']),
-                'monochrome_y': to_gpu(layers[LAYER_TAGS_IDS['monochrome']]),
-                'paragraph_y': to_gpu(layers[LAYER_TAGS_IDS['paragraph']]),
-                'line_cpu': layers[LAYER_TAGS_IDS['line']],
-                'char_cpu': layers[LAYER_TAGS_IDS['char']],
+                'monochrome_y': to_gpu(layers['monochrome']),
+                'paragraph_y': to_gpu(layers['paragraph']),
+                'line_cpu': layers['line'],
+                'char_cpu': layers['char'],
             }
             return context
 
@@ -485,7 +489,7 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         order = [
             'Monochrome',
             'Paragraph', 'move_from_gpu_paragraph',
-            'ParagraphCrop', 'move_to_gpu_paragraph_crop',
+            'ParagraphCrop', 'move_to_gpu_paragraph_crop', 'rename_line',
             'Line', 'move_from_gpu_line',
             'LineCrop',
             'CharLabel', 'move_to_gpu_char_label',
@@ -582,26 +586,18 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         })
 
     def make_line_crop_component():
-        crop_rotate_and_zoom_lines = CropRotateAndZoomLines(min(8, os.cpu_count()), 32, 32)
+        crop_rotate_and_zoom_lines = CropRotateAndZoomLines(
+            min(8, os.cpu_count()),
+            CHAR_INPUT_HEIGHT, CHAR_FIXED_WIDTH)
 
         @track_function('LineCrop', 'forward', progress_tracker)
         def line_crop_func(context):
-            def make_subelements_divisible_by(arrays, y, x):
-                return [
-                    [
-                        [make_divisible_by(line, y, x) for line in paragraph]
-                        for paragraph in array
-                    ]
-                    for array in arrays
-                ]
-
             masks, *arrays = get_from_context(context, [
                 'line_pred_cpu',
                 'cropped_monochrome_cpu', 'cropped_char_cpu',
             ])
 
-            results = make_subelements_divisible_by(
-                crop_rotate_and_zoom_lines(masks, arrays), 16, 16)
+            results = crop_rotate_and_zoom_lines(masks, arrays)
 
             put_to_context(context, [
                 'cropped_2_monochrome_cpu', 'cropped_2_char_cpu',
@@ -618,7 +614,7 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
 
     def make_char_component():
         char = ModelComponent(
-            'Char', make_line(input_shape, optimizer),
+            'Char', make_char(input_shape, optimizer),
             CharSelector('cropped_2_monochrome', 'char_labels', 'char_pred'))
         return char
 

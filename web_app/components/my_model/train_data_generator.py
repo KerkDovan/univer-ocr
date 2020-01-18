@@ -26,7 +26,10 @@ def encode_layers(images):
         layer = np.array([
             np.asarray(images[layer_name].convert('L'))
             for layer_name in LAYER_NAMES[tag]
+            if layer_name in images.keys()
         ])
+        if layer.shape == (0,):
+            continue
         layer = np.moveaxis(layer, 0, -1)
         layer = np.reshape(layer, (1, *layer.shape)) / 255
         layers[tag] = layer

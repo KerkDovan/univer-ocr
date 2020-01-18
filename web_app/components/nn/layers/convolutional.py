@@ -335,25 +335,29 @@ class Conv2DToBatchedFixedWidthed(BaseLayer):
     def _forward(self, X, mem_id=0):
         new_shape = self.get_output_shapes(X.shape)[0]
         bs, h, w, ch = X.shape
+        hw = self.width // 2
+        padded = CP.cp.zeros((bs, h, w + self.width, ch))
+        padded[:, :, hw:-self.width + hw, :] = X
         y = CP.cp.zeros(new_shape)
         out_bs = 0
         for in_bs in range(bs):
-            for w_id in range(w - self.width + 1):
-                y[out_bs, :, :, :] = X[in_bs, :, w_id:w_id + self.width, :]
+            for w_id in range(w):
+                y[out_bs, :, :, :] = padded[in_bs, :, w_id:w_id + self.width, :]
                 out_bs += 1
-        self._mem[mem_id] = X.shape
+        self._mem[mem_id] = padded.shape
         return y
 
     def _backward(self, grad, mem_id=0):
-        input_shape = self._mem[mem_id]
-        bs, h, w, ch = input_shape
-        dx = CP.cp.zeros(input_shape)
+        padded_shape = self._mem[mem_id]
+        bs, h, w, ch = padded_shape
+        dx = CP.cp.zeros(padded_shape)
         out_bs = 0
         for in_bs in range(bs):
-            for w_id in range(w - self.width + 1):
+            for w_id in range(w - self.width):
                 dx[in_bs, :, w_id:w_id + self.width, :] += grad[out_bs, :, :, :]
                 out_bs += 1
-        return dx
+        hw = self.width // 2
+        return dx[:, :, hw:-self.width + hw, :]
 
     def get_output_shapes(self, input_shapes):
         input_shapes = make_list_if_not(input_shapes)
@@ -364,7 +368,6 @@ class Conv2DToBatchedFixedWidthed(BaseLayer):
                 f'Input width must be >= than output width, '
                 f'found: {w} < {self.width}')
             new_w = self.width
-            windows_count = w - new_w + 1
-            new_bs = bs * windows_count
+            new_bs = bs * w
             output_shapes.append((new_bs, h, new_w, ch))
         return output_shapes
