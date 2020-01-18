@@ -337,7 +337,7 @@ class CropAndRotateSingleParagraph:
                 else:
                     low = a
             angle = (high + low) / 2
-            if angle < EPS:
+            if not EPS <= angle <= 180.0 - EPS:
                 angle = None
         else:
             angle = None
