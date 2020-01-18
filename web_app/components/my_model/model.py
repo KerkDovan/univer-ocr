@@ -3,7 +3,7 @@ from enum import Enum
 
 import numpy as np
 
-from ..interpreter import CropAndRotateParagraphs, CropRotateAndZoomLines
+from ..interpreter import CropAndRotateParagraphs, CropRotateAndZoomLines, LabelChar, PredToText
 from ..nn.gpu import CP
 from ..nn.help_func import make_list_if_not
 from ..nn.layers import (
@@ -606,9 +606,13 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         return line_crop
 
     def make_char_label_component():
+        label_char = LabelChar(min(8, os.cpu_count()))
+
         @track_function('CharLabel', 'forward', progress_tracker)
         def char_label_func(context):
-            pass
+            lines = get_from_context(context, ['cropped_2_char_cpu'])[0]
+            result = label_char(lines)
+            put_to_context(context, ['char_labels_cpu'], [result])
         char_label = RawFunctionComponent(char_label_func)
         return char_label
 
@@ -634,9 +638,13 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         })
 
     def make_pred_to_text_component():
+        pred_to_text = PredToText(min(8, os.cpu_count()))
+
         @track_function('PredToText', 'forward', progress_tracker)
         def pred_to_text_func(context):
-            pass
+            predictions = get_from_context(context, ['char_pred_cpu'])[0]
+            result = pred_to_text(predictions)
+            put_to_context(context, ['text'], [result])
         pred_to_text = RawFunctionComponent(pred_to_text_func)
         return pred_to_text
 

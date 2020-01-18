@@ -6,7 +6,8 @@ from PIL.ImageFont import truetype
 RUSSIAN_LOWERCASE = u'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'
 RUSSIAN_UPPERCASE = u'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
 RUSSIAN = RUSSIAN_LOWERCASE + RUSSIAN_UPPERCASE
-CHARS = ' ' + RUSSIAN + string.digits + string.ascii_letters + string.punctuation
+CHARS = '\t' + ' ' + RUSSIAN + string.digits + string.ascii_letters + string.punctuation
+CHARS_IDS = {char: i for i, char in enumerate(CHARS)}
 
 BITS_COUNT = ceil(log(len(CHARS) + 1, 2))
 

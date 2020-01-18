@@ -165,15 +165,24 @@ class LayeredImage:
                 ch_t = ch_b - h
                 ch_l = ch_r - c_width
                 ch_offset_x = font.getoffset(char)[0]
+                w10 = max(1, c_width / 10)
 
                 self._char(char, (x + ch_l - ch_offset_x, y + dy), font)
                 self._mask_box(char, (x + ch_l, ch_t, x + ch_r, ch_b))
-                self._full_box(char, (x + ch_l, y_ascent, x + ch_r, y_descent))
+                self._full_box(char, (
+                    x + ch_l - ch_offset_x + w10,
+                    y_ascent,
+                    x + ch_r - ch_offset_x - w10,
+                    y_descent))
 
                 if i == len(line) - 1:
                     continue
 
-                self._letter_spacing((x + ch_r, y_ascent, x + ch_r + 1, y_descent))
+                self._letter_spacing((
+                    x + ch_r - ch_offset_x - w10,
+                    y_ascent,
+                    x + ch_r - ch_offset_x + w10,
+                    y_descent))
 
             dy += font.getsize_multiline(f'{line}\nA', spacing=spacing)[1] - font.getsize('A')[1]
 
@@ -249,7 +258,7 @@ class LayeredImage:
 
 
 def random_font(min_size=12, max_size=48):
-    style = random.choice(['normal', 'bold', 'italic', 'bold_italic'])
+    style = random.choice(['normal', 'bold'])
     font = None
     while font is None:
         font = getattr(random.choice(FONTS_LIST), style)
@@ -260,7 +269,7 @@ def random_font(min_size=12, max_size=48):
 def random_text(min_wrap=30, max_wrap=100):
     if np.random.choice([True, False], p=[0.1, 0.9]):
         text = ' '.join(
-            ''.join(random.choice(CHARS) for i in range(random.randint(1, 10)))
+            ''.join(random.choice(CHARS[1:]) for i in range(random.randint(1, 10)))
             for j in range(random.randint(3, 30)))
     else:
         fake = Faker(random.choice(['la', 'en_US', 'ru_RU']))

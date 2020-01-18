@@ -1,5 +1,6 @@
 import os
 import signal
+from collections import Counter
 from datetime import datetime as dt
 from queue import Empty
 from threading import Thread
@@ -8,7 +9,7 @@ from time import sleep
 import numpy as np
 from scipy import ndimage
 
-from ..primitives import BITS_COUNT, decode_char
+from ..primitives import BITS_COUNT, CHARS, CHARS_IDS, decode_char
 from .parallelism import ERRORS_TO_STOP, MP
 
 
@@ -518,7 +519,7 @@ class CropRotateAndZoomLines(BaseWorkersPool):
         if zoomed_height is not None:
             height = final_image.shape[1]
             zf = zoomed_height / height
-            final_image = ndimage.zoom(final_image, (1, zf, zf, 1))
+            final_image = ndimage.zoom(final_image, (1, zf, zf, 1), order=0)
 
         if minimal_width is not None and final_image.shape[2] < minimal_width:
             bs, h, w, ch = final_image.shape
@@ -528,3 +529,94 @@ class CropRotateAndZoomLines(BaseWorkersPool):
             final_image = tmp
 
         return final_image
+
+
+class LabelChar(BaseWorkersPool):
+    def __call__(self, arrays):
+        return super().__call__(arrays)
+
+    def _func(self, pool, arrays):
+        result = []
+        async_res = []
+        for paragraph_id in range(len(arrays)):
+            result.append([])
+            for line_id in range(len(arrays[paragraph_id])):
+                result[paragraph_id].append(None)
+                index = (paragraph_id, line_id)
+                r = pool.apply_async(self._func1, (
+                    arrays[paragraph_id][line_id],))
+                async_res.append((index, r))
+
+        for (paragraph_id, line_id), res in async_res:
+            result[paragraph_id][line_id] = res.get()
+
+        return result
+
+    @staticmethod
+    def _func1(array):
+        thresholded = array > 0.5 * (np.mean(array) + np.max(array))
+
+        chars_shape = (array.shape[1], array.shape[2])
+        chars = np.zeros(chars_shape, dtype='<U1')
+        for y in range(chars_shape[0]):
+            for x in range(chars_shape[1]):
+                pixel = thresholded[0, y, x, :]
+                encoded = ''.join('1' if pixel[i] else '0' for i in range(BITS_COUNT))
+                decoded = decode_char(encoded)
+                if decoded == 'unknown':
+                    continue
+                chars[y, x] = decoded
+
+        result_shape = (array.shape[2], len(CHARS))
+        result = np.zeros(result_shape)
+        for i in range(result_shape[0]):
+            char_counter = Counter(chars[:, i].flatten())
+            char = char_counter.most_common(1)[0][0]
+            if char == '':
+                continue
+            char_id = CHARS_IDS[char]
+            result[i, char_id] = 1
+        return result
+
+
+class PredToText(BaseWorkersPool):
+    def __call__(self, prediction):
+        return super().__call__(prediction)
+
+    def _func(self, pool, prediction):
+        result = []
+        async_res = []
+        for paragraph_id in range(len(prediction)):
+            result.append([])
+            for line_id in range(len(prediction[paragraph_id])):
+                result[paragraph_id].append(None)
+                index = (paragraph_id, line_id)
+                r = pool.apply_async(self._func1, (
+                    prediction[paragraph_id][line_id],))
+                async_res.append((index, r))
+
+        for (paragraph_id, line_id), res in async_res:
+            result[paragraph_id][line_id] = res.get()
+
+        return result
+
+    @staticmethod
+    def _func1(prediction):
+        max_vals = np.max(prediction, axis=1)
+        mask = ~np.equal(max_vals, 0.0)
+        thresholded = np.zeros_like(prediction, dtype=np.bool)
+        for i in range(prediction.shape[1]):
+            thresholded[:, i] = (prediction[:, i] == max_vals) * mask
+        ids = [x[1] for x in sorted(np.argwhere(thresholded), key=lambda t: t[0])]
+        result = ''
+        prev_char = None
+        for char_id in ids:
+            if char_id == 0:
+                prev_char = None
+                continue
+            cur_char = CHARS[char_id]
+            if cur_char == prev_char:
+                continue
+            result += cur_char
+            prev_char = cur_char
+        return result

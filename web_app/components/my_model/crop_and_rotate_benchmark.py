@@ -8,19 +8,20 @@ from PIL import Image
 
 from tqdm import tqdm
 
-from ..interpreter import MP, CropAndRotateParagraphs, CropRotateAndZoomLines
+from ..interpreter import (
+    MP, CropAndRotateParagraphs, CropRotateAndZoomLines, LabelChar, PredToText)
 from .constants import GENERATED_FILES_PATH
 from .datasets import train_dataset
 
 
 def to_array(image):
     result = np.array(image)
-    result = np.reshape(result, (1, *result.shape, 1))
+    result = np.reshape(result, (1, *result.shape, 1)) / 255
     return result
 
 
 def from_array(array, ch=0):
-    result = array[0, :, :, ch]
+    result = (array[0, :, :, ch] * 255).astype(np.uint8)
     result = Image.fromarray(result)
     return result
 
@@ -28,10 +29,14 @@ def from_array(array, ch=0):
 def benchmark_one(dirpath, workers_count):
     total_paragraph_crop_time = dt.now() - dt.now()
     total_line_crop_time = dt.now() - dt.now()
+    total_char_label_time = dt.now() - dt.now()
+    total_pred_to_text_time = dt.now() - dt.now()
     total_save_time = dt.now() - dt.now()
 
     crop_and_rotate_paragraphs = CropAndRotateParagraphs(workers_count, False)
     crop_rotate_and_zoom_lines = CropRotateAndZoomLines(workers_count, 32, 200)
+    label_char = LabelChar(workers_count)
+    pred_to_text = PredToText(workers_count)
     print(f'Workers count: {workers_count}')
 
     for i in tqdm(range(len(train_dataset)), ascii=True):
@@ -57,6 +62,14 @@ def benchmark_one(dirpath, workers_count):
             paragraphs[1], [paragraphs[0], paragraphs[2]])
         total_line_crop_time += dt.now() - ts
 
+        ts = dt.now()
+        labels = label_char(bit_lines)
+        total_char_label_time += dt.now() - ts
+
+        ts = dt.now()
+        text = pred_to_text(labels)
+        total_pred_to_text_time += dt.now() - ts
+
         for j in range(len(paragraphs[0])):
             ts = dt.now()
 
@@ -75,6 +88,7 @@ def benchmark_one(dirpath, workers_count):
                 bit.save(dirpath / f'{i}_{j}_4_bit_{k}.png')
             cr_letter_spacing.save(dirpath / f'{i}_{j}_5_letter_spacing.png')
 
+            text_file = open(dirpath / f'{i}_{j}_0_text.txt', 'w', encoding='utf-8')
             for k in range(len(lines[j])):
                 concatenated = np.concatenate([
                     lines[j][k],
@@ -83,11 +97,14 @@ def benchmark_one(dirpath, workers_count):
                 ], axis=1)
                 cr_line = from_array(concatenated)
                 cr_line.save(dirpath / f'{i}_{j}_6_{k}_line.png')
+                print(text[j][k], file=text_file)
+            text_file.close()
 
             total_save_time += dt.now() - ts
 
     print(f'Total paragraph crop time: {total_paragraph_crop_time.total_seconds()} sec')
     print(f'Total line crop time: {total_line_crop_time.total_seconds()} sec')
+    print(f'Total char label time: {total_char_label_time.total_seconds()} sec')
     print(f'Total save time: {total_save_time.total_seconds()} sec')
     print(f'Timers:')
     print(f'  Crop and Rotate Paragraphs:')
