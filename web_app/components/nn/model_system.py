@@ -85,10 +85,11 @@ class IterableSelector(BaseSelector):
 
 
 class ModelComponent(BaseComponent):
-    def __init__(self, name, model, selector):
+    def __init__(self, name, model, selector, delist_result=False):
         self.name = name
         self.model = model
         self.selector = selector
+        self.delist_result = delist_result
 
     def train(self, context):
         self.selector(context)
@@ -99,9 +100,12 @@ class ModelComponent(BaseComponent):
             else:
                 for k, v in losses.items():
                     context['losses'][self.name][k] += v
-            self.selector.put([
+            result = [
                 self.model.layers_outputs[k]
-                for k in range(self.model.outputs_count)])
+                for k in range(self.model.outputs_count)]
+            if self.delist_result:
+                result = result[0]
+            self.selector.put(result)
 
     def test(self, context):
         self.selector(context)
@@ -112,17 +116,23 @@ class ModelComponent(BaseComponent):
             else:
                 for k, v in losses.items():
                     context['losses'][self.name][k] += v
-            self.selector.put([
+            result = [
                 self.model.layers_outputs[k]
-                for k in range(self.model.outputs_count)])
+                for k in range(self.model.outputs_count)]
+            if self.delist_result:
+                result = result[0]
+            self.selector.put(result)
 
     def predict(self, context):
         self.selector(context)
         for X, _ in self.selector.get():
             context['prediction'][self.name] = self.model.predict(X)
-            self.selector.put([
+            result = [
                 self.model.layers_outputs[k]
-                for k in range(self.model.outputs_count)])
+                for k in range(self.model.outputs_count)]
+            if self.delist_result:
+                result = result[0]
+            self.selector.put(result)
 
 
 class ModelSystem:

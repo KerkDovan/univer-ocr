@@ -41,11 +41,14 @@ def encode_ys(images):
     return ys
 
 
-def decode_y(y, normalize=False):
+def decode_y(y, normalize=False, four_dims=True):
     pred_images = []
     thresholded_images = []
     y = CP.asnumpy(y)
-    y = [y[0, :, :, i] for i in range(y.shape[-1])]
+    if four_dims:
+        y = [y[0, :, :, i] for i in range(y.shape[-1])]
+    else:
+        y = [y]
     for yi in y:
         if normalize:
             yi -= np.min(yi)

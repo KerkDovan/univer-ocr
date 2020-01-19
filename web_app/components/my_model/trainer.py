@@ -1,12 +1,10 @@
 import gc
 from datetime import datetime as dt
+from random import shuffle
 
 import numpy as np
 
 from tqdm import tqdm
-
-from ..nn.gpu import CP
-from .model import make_context
 
 
 class Losses:
@@ -127,11 +125,13 @@ class Losses:
 
 
 class Trainer:
-    def __init__(self, model_system, models, train_dataset, validation_dataset,
+    def __init__(self, model_system, make_context_func,
+                 models, train_dataset, validation_dataset,
                  progress_tracker, show_progress_bar=False,
                  optimizer=None, learning_rate_step=0.995,
                  save_weights_func=None, save_pictures_func=None):
         self.model_system = model_system
+        self.make_context_func = make_context_func
         self.models = models
         self.train_dataset = train_dataset
         self.validation_dataset = validation_dataset
@@ -159,6 +159,9 @@ class Trainer:
 
         best_weights = last_weights = get_weights()
         reload_attempts = 0
+
+        train_random_order = list(range(len(self.train_dataset)))
+        validation_random_order = list(range(len(self.validation_dataset)))
 
         epoch = 1
         while epoch <= num_epochs:
@@ -189,67 +192,47 @@ class Trainer:
                 def pb(iterable, *args, **kwargs):
                     return iterable
 
+            shuffle(train_random_order)
             iters_cnt = len(self.train_dataset)
             for i in pb(range(iters_cnt), desc='Training', ascii=True):
                 self.progress_tracker.reset()
                 self.progress_tracker.message('training')
 
-                X, ys = self.train_dataset.get(i)
-                context = make_context(X, ys)
+                context = self.make_context_func(
+                    self.train_dataset.get, (train_random_order[i],))
                 self.model_system.train(context)
                 losses.train(context['losses'])
 
                 if self.save_pictures_func is not None:
-                    self.model_system.predict(context)
                     self.save_pictures_func(epoch, 'train', i, context)
 
                 self.progress_tracker.message('train_iteration', {
                     'current': i + 1, 'total': iters_cnt
                 })
 
-                del X, ys, context
+                del context
                 gc.collect()
 
-            y_min, y_mean, y_max = None, None, None
-            p_min, p_mean, p_max = None, None, None
-
+            shuffle(validation_random_order)
             iters_cnt = len(self.validation_dataset)
             assert iters_cnt > 0, 'Validation dataset must have at least 1 element'
             for i in pb(range(iters_cnt), desc='Validating', ascii=True):
                 self.progress_tracker.reset()
                 self.progress_tracker.message('validating')
 
-                X, ys = self.validation_dataset.get(i)
-                context = make_context(X, ys)
+                context = self.make_context_func(
+                    self.validation_dataset.get, (validation_random_order[i],))
                 self.model_system.test(context)
                 losses.validation(context['losses'])
 
-                ps = None
-                if self.save_pictures_func is not None or i == iters_cnt - 1:
-                    self.progress_tracker.message('disable_status_update')
-                    context = make_context(X, ys)
-                    self.model_system.predict(context)
-                    tmp_ps = context['prediction']
-                    ps = []
-                    for name in model_names:
-                        ps.extend(tmp_ps[name])
-                    self.progress_tracker.message('enable_status_update')
                 if self.save_pictures_func is not None:
                     self.save_pictures_func(epoch, 'validation', i, context)
-
-                if ps is not None:
-                    y_min = ' '.join(f'{np.round(CP.asnumpy(CP.cp.min(y)), 3):<5}' for y in ys)
-                    y_mean = ' '.join(f'{np.round(CP.asnumpy(CP.cp.mean(y)), 3):<5}' for y in ys)
-                    y_max = ' '.join(f'{np.round(CP.asnumpy(CP.cp.max(y)), 3):<5}' for y in ys)
-                    p_min = ' '.join(f'{np.round(CP.asnumpy(CP.cp.min(p)), 3):<5}' for p in ps)
-                    p_mean = ' '.join(f'{np.round(CP.asnumpy(CP.cp.mean(p)), 3):<5}' for p in ps)
-                    p_max = ' '.join(f'{np.round(CP.asnumpy(CP.cp.max(p)), 3):<5}' for p in ps)
 
                 self.progress_tracker.message('val_iteration', {
                     'current': i + 1, 'total': iters_cnt
                 })
 
-                del X, ys, ps, context
+                del context
                 gc.collect()
 
             losses.normalize(len(self.train_dataset), len(self.validation_dataset))
@@ -261,10 +244,12 @@ class Trainer:
                 if any(model.nan_weights() for model in self.models.values()):
                     if reload_attempts < 10:
                         print(f'NaN value found in weights, loading last weights\n')
-                        self.model.set_weights(last_weights)
+                        for model in self.models.values():
+                            model.set_weights(last_weights)
                     else:
                         print(f'Too many attempts, loading last best weights\n')
-                        self.model.set_weights(best_weights)
+                        for model in self.models.values():
+                            model.set_weights(best_weights)
                         reload_attempts = 0
                     continue
 
@@ -275,10 +260,6 @@ class Trainer:
                     f'learning rate could be decreased to try avoiding NaN values')
 
             losses.print(left_margin=2)
-            print(f'  Statistics (y :: p):')
-            print(f'    min:  {y_min} :: {p_min}')
-            print(f'    mean: {y_mean} :: {p_mean}')
-            print(f'    max:  {y_max} :: {p_max}')
 
             better_weights = losses.get_better_weights(epoch)
             if any(better_weights):

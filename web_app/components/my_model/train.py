@@ -7,9 +7,8 @@ from ..nn.gpu import CP
 from ..nn.optimizers import Adam
 from ..nn.progress_tracker import ProgressTracker
 from .constants import MODEL_WEIGHTS_FILE_PATH, TRAIN_PROGRESS_PATH
-from .datasets import (
-    RandomSelectDataset, decode_X, decode_y, decode_ys, train_dataset, validation_dataset)
-from .model import make_model_system
+from .datasets import RandomSelectDataset, decode_X, decode_y, train_dataset, validation_dataset
+from .model import Modes, make_context_maker, make_model_system
 from .trainer import Trainer
 
 emitter = None
@@ -95,18 +94,26 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
     model_weights_file = MODEL_WEIGHTS_FILE_PATH
     train_progress_path = TRAIN_PROGRESS_PATH
 
-    model_systems = [
-        (make_model_system, 0.0015, 0.995, 100),
+    modes = [
+        (Modes.TRAIN_MONOCHROME, 0.0015, 0.995, 100),
+        (Modes.TRAIN_PARAGRAPH, 0.0015, 0.995, 100),
+        (Modes.TRAIN_LINE, 0.0015, 0.995, 100),
+        (Modes.TRAIN_CHAR, 0.0015, 0.9, 10),
+        (Modes.TRAIN_ALL, 0.001, 0.9, 10),
     ]
 
-    for make_model_system_func, lr, lr_step, epochs in model_systems:
+    for mode, lr, lr_step, epochs in modes:
+        print(f'Training mode: {mode.name}')
+
         random_train_dataset = RandomSelectDataset(50, train_dataset)
         random_validation_dataset = RandomSelectDataset(5, validation_dataset)
 
-        X, ys = random_train_dataset.get(0)
+        layers = random_train_dataset.get(0)
+        X = layers['image']
+        ys = [layers[name] for name in layers.keys() if name != 'image']
         input_shape, output_shapes = X.shape, [y.shape for y in ys]
         message(f'Input shape: {input_shape}, output shapes: {output_shapes}')
-        del X, ys
+        del layers, X, ys
 
         try:
             weights = json.load(open(model_weights_file, 'r'))
@@ -115,8 +122,9 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
             weights = {}
 
         optimizer = Adam(lr=lr)
-        model_system, models, names = make_model_system_func(
-            input_shape, optimizer, tracker, weights)
+        model_system, models, names = make_model_system(
+            input_shape, optimizer, tracker, weights, mode=mode)
+        make_context_func = make_context_maker(mode)
 
         def update_weights_func(models_to_update):
             try:
@@ -132,7 +140,7 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
         if save_train_progress:
             def save_pictures_func(epoch, phase, index, context):
                 def save(name, X, y, pred, th, paragraph_id=None, line_id=None):
-                    sp = TRAIN_PROGRESS_PATH / f'{name}'
+                    sp = TRAIN_PROGRESS_PATH / f'{mode.name}'.lower() / f'{name}'
                     sp.mkdir(parents=True, exist_ok=True)
                     prefix = f'{epoch}_{phase}_{index}_'
                     paragraph_id = '' if paragraph_id is None else f'{paragraph_id}_'
@@ -147,36 +155,61 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
                 def delist(lst):
                     return [x[0] for x in lst]
 
-                X = [decode_X(context['X'])]
-                monochrome_y, _ = decode_y(context['monochrome_y'])
-                monochrome_pred, monochrome_th = decode_ys(context['monochrome_pred'])
-                save('monochrome', X, monochrome_y, monochrome_pred, monochrome_th)
+                def save_monochrome():
+                    X = [decode_X(context['monochrome_X'])]
+                    y, _ = decode_y(context['monochrome_y'])
+                    pred, th = decode_y(context['monochrome_pred'])
+                    save('monochrome', X, y, pred, th)
 
-                paragraph_y, _ = decode_y(context['paragraph_y'])
-                paragraph_pred, paragraph_th = decode_ys(context['paragraph_pred'])
-                save('paragraph', monochrome_pred, paragraph_y, paragraph_pred, paragraph_th)
+                if mode is Modes.TRAIN_MONOCHROME:
+                    save_monochrome()
+                    return
 
-                c1_m_y = context['cropped_1_monochrome_y']
-                c1_l_y = context['cropped_1_line_y']
-                c1_l_pred = delist(context['cropped_1_line_pred'])
+                def save_paragraph():
+                    X, _ = decode_y(context['paragraph_X'])
+                    y, _ = decode_y(context['paragraph_y'])
+                    pred, th = decode_y(context['paragraph_pred'])
+                    save('paragraph', X, y, pred, th)
 
-                for paragraph_id in range(len(c1_m_y)):
-                    line_X, _ = decode_y(c1_m_y[paragraph_id])
-                    line_y, _ = decode_y(c1_l_y[paragraph_id])
-                    line_pred, line_th = decode_y(c1_l_pred[paragraph_id])
-                    save('line', line_X, line_y, line_pred, line_th, paragraph_id=paragraph_id)
+                if mode is Modes.TRAIN_PARAGRAPH:
+                    save_paragraph()
+                    return
 
-                    c2_m_y = context['cropped_2_monochrome_y'][paragraph_id]
-                    c2_ls_y = context['cropped_2_letter_spacing_y'][paragraph_id]
-                    c2_ls_pred = delist(context['cropped_2_letter_spacing_pred'][paragraph_id])
+                def save_line():
+                    c_m_y = context['cropped_monochrome_cpu']
+                    c_l_y = context['cropped_line_cpu']
+                    c_l_pred = context['line_pred']
+                    for paragraph_id in range(len(c_m_y)):
+                        X, _ = decode_y(c_m_y[paragraph_id])
+                        y, _ = decode_y(c_l_y[paragraph_id])
+                        pred, th = decode_y(c_l_pred[paragraph_id])
+                        save('line', X, y, pred, th, paragraph_id=paragraph_id)
 
-                    for line_id in range(len(c2_m_y)):
-                        letter_spacing_X, _ = decode_y(c2_m_y[line_id])
-                        letter_spacing_y, _ = decode_y(c2_ls_y[line_id])
-                        letter_spacing_pred, letter_spacing_th = decode_y(c2_ls_pred[line_id])
-                        save('letter_spacing', letter_spacing_X, letter_spacing_y,
-                             letter_spacing_pred, letter_spacing_th,
-                             paragraph_id=paragraph_id, line_id=line_id)
+                if mode is Modes.TRAIN_LINE:
+                    save_line()
+                    return
+
+                def save_char():
+                    c2_m_y = context['cropped_2_monochrome_cpu']
+                    c_l = context['char_labels_cpu']
+                    c_pred = context['char_pred']
+                    for paragraph_id in range(len(c2_m_y)):
+                        for line_id in range(len(c2_m_y[paragraph_id])):
+                            X, _ = decode_y(c2_m_y[paragraph_id][line_id])
+                            y, _ = decode_y(c_l[paragraph_id][line_id], four_dims=False)
+                            pred, th = decode_y(c_pred[paragraph_id][line_id], four_dims=False)
+                            save('char', X, y, pred, th,
+                                 paragraph_id=paragraph_id, line_id=line_id)
+
+                if mode is Modes.TRAIN_CHAR:
+                    save_char()
+                    return
+
+                if mode is Modes.TRAIN_ALL:
+                    save_monochrome()
+                    save_paragraph()
+                    save_line()
+                    save_char()
 
             print(f'Saving train progress into {train_progress_path}\n')
         else:
@@ -190,7 +223,7 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
 
         output_shapes = {}
         for model_name, model in models.items():
-            tmp_output_shapes = model.get_all_output_shapes(input_shape)
+            tmp_output_shapes = model.get_all_output_shapes(model.input_shapes)
             tmp_output_shapes = {
                 model_name: tmp_output_shapes[0],
                 **{name: shapes for name, shapes in tmp_output_shapes[1].items()},
@@ -200,6 +233,8 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
 
         receptive_fields = {}
         for model in models.values():
+            if not model.is_fully_convolutional():
+                continue
             tmp_receptive_fields = model.get_receptive_fields()
             for layer_name, rf in tmp_receptive_fields.items():
                 y, x = rf['input 0']['y'], rf['input 0']['x']
@@ -216,7 +251,8 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
         message(f'Count of parameters: {count_parameters}')
 
         trainer = Trainer(
-            model_system, models, random_train_dataset, random_validation_dataset,
+            model_system, make_context_func,
+            models, random_train_dataset, random_validation_dataset,
             progress_tracker=tracker, show_progress_bar=show_progress_bar,
             optimizer=optimizer, learning_rate_step=lr_step,
             save_weights_func=update_weights_func, save_pictures_func=save_pictures_func)

@@ -487,7 +487,7 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
                       mode=Modes.PREDICT):
     def get_result(components):
         order = [
-            'Monochrome',
+            'Monochrome', 'rename_monochrome',
             'Paragraph', 'move_from_gpu_paragraph',
             'ParagraphCrop', 'move_to_gpu_paragraph_crop', 'rename_line',
             'Line', 'move_from_gpu_line',
@@ -532,7 +532,8 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
     def make_monochrome_component():
         monochrome = ModelComponent(
             'Monochrome', make_monochrome(input_shape, optimizer),
-            StringSelector('monochrome_X', 'monochrome_y', 'monochrome_pred'))
+            StringSelector('monochrome_X', 'monochrome_y', 'monochrome_pred'),
+            delist_result=True)
         return monochrome
 
     if mode is Modes.TRAIN_MONOCHROME:
@@ -541,7 +542,8 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
     def make_paragraph_component():
         paragraph = ModelComponent(
             'Paragraph', make_paragraph(input_shape, optimizer),
-            StringSelector('paragraph_X', 'paragraph_y', 'paragraph_pred'))
+            StringSelector('paragraph_X', 'paragraph_y', 'paragraph_pred'),
+            delist_result=True)
         return paragraph
 
     if mode is Modes.TRAIN_PARAGRAPH:
@@ -557,22 +559,24 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
                     [make_divisible_by(t, y, x) for t in array]
                     for array in arrays
                 ]
+            old_labels = ['monochrome_pred_cpu', 'line_cpu', 'char_cpu']
+            new_labels = ['cropped_monochrome_cpu', 'cropped_line_cpu', 'cropped_char_cpu']
+            if mode is Modes.TRAIN_LINE:
+                old_labels.pop()
+                new_labels.pop()
             mask, *arrays = get_from_context(context, [
-                'paragraph_pred_cpu',
-                'monochrome_pred_cpu', 'line_cpu', 'char_cpu',
-            ])
+                'paragraph_pred_cpu', *old_labels])
             results = make_subelements_divisible_by(
                 crop_and_rotate_paragraphs(mask, arrays), 16, 16)
-            put_to_context(context, [
-                'cropped_monochrome_cpu', 'cropped_line_cpu', 'cropped_char_cpu',
-            ], results)
+            put_to_context(context, new_labels, results)
         paragraph_crop = RawFunctionComponent(paragraph_crop_func)
         return paragraph_crop
 
     def make_line_component():
         line = ModelComponent(
             'Line', make_line(input_shape, optimizer),
-            LineSelector('cropped_monochrome', 'cropped_line', 'line_pred'))
+            LineSelector('cropped_monochrome', 'cropped_line', 'line_pred'),
+            delist_result=True)
         return line
 
     if mode is Modes.TRAIN_LINE:
@@ -596,9 +600,7 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
                 'line_pred_cpu',
                 'cropped_monochrome_cpu', 'cropped_char_cpu',
             ])
-
             results = crop_rotate_and_zoom_lines(masks, arrays)
-
             put_to_context(context, [
                 'cropped_2_monochrome_cpu', 'cropped_2_char_cpu',
             ], results)
@@ -619,7 +621,8 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
     def make_char_component():
         char = ModelComponent(
             'Char', make_char(input_shape, optimizer),
-            CharSelector('cropped_2_monochrome', 'char_labels', 'char_pred'))
+            CharSelector('cropped_2_monochrome', 'char_labels', 'char_pred'),
+            delist_result=True)
         return char
 
     if mode is Modes.TRAIN_CHAR:
@@ -651,6 +654,9 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
     if mode in [Modes.TRAIN_ALL, Modes.PREDICT]:
         components = {
             'Monochrome': make_monochrome_component(),
+            'rename_monochrome': make_rename_in_context_component([
+                ('monochrome_pred', 'paragraph_X'),
+            ]),
             'Paragraph': make_paragraph_component(),
             'move_from_gpu_paragraph': make_move_from_gpu_component([
                 ('monochrome_pred', 'monochrome_pred_cpu'),
