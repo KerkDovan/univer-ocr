@@ -192,10 +192,11 @@ def get_from_queue(queue):
         exit(0)
 
 
-def rotate_array(array, angle=None):
+def rotate_array(array, angle=None, good_rotation=True):
     if angle is None:
         return array
-    return ndimage.rotate(array, angle, axes=(2, 1))
+    order = 1 if good_rotation else 0
+    return ndimage.rotate(array, angle, axes=(2, 1), order=order, reshape=True)
 
 
 class FindObjectHeightInRotated:
@@ -232,7 +233,7 @@ class FindObjectHeightInRotated:
 
     @staticmethod
     def _func(array, angle):
-        rotated = rotate_array(array, angle)
+        rotated = rotate_array(array, angle, good_rotation=False)
         _, region_y, _, _ = ndimage.find_objects(rotated)[0]
         return region_y.stop - region_y.start
 
@@ -343,7 +344,7 @@ class CropAndRotateSingleParagraph:
         else:
             angle = None
 
-        rotated_mask = rotate_array(mask, angle)
+        rotated_mask = rotate_array(mask, angle, good_rotation=False)
         _, region_y, region_x, _ = ndimage.find_objects(rotated_mask)[0]
 
         result = [

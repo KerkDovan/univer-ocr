@@ -7,7 +7,7 @@ from .train_data_generator import DataGenerator, generate_picture
 
 def main(*args, **kwargs):
     data_generator = DataGenerator(
-        generator_func=generate_picture, func_args=(640, 480, False))
+        generator_func=generate_picture, func_args=(640, 480, True))
     data_generator.start()
 
     train_path = TRAIN_DATA_PATH

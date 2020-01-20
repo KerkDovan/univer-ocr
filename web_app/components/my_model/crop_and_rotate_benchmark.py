@@ -33,7 +33,7 @@ def benchmark_one(dirpath, workers_count):
     total_pred_to_text_time = dt.now() - dt.now()
     total_save_time = dt.now() - dt.now()
 
-    crop_and_rotate_paragraphs = CropAndRotateParagraphs(workers_count, False)
+    crop_and_rotate_paragraphs = CropAndRotateParagraphs(workers_count, True)
     crop_rotate_and_zoom_lines = CropRotateAndZoomLines(workers_count, 32, 200)
     label_char = LabelChar(workers_count)
     pred_to_text = PredToText(workers_count)
