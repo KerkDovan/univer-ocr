@@ -18,7 +18,7 @@ LAYER_NAMES = {
     LAYER_TAGS[0]: ['image'],
     LAYER_TAGS[1]: ['image_monochrome'],
     LAYER_TAGS[2]: ['paragraph'],
-    LAYER_TAGS[3]: ['line_top', 'line_center', 'line_bottom'],
+    LAYER_TAGS[3]: ['line_top', 'line_bottom'],
     LAYER_TAGS[4]: [
         *[f'bit_{i}' for i in range(BITS_COUNT)],
         'letter_spacing',

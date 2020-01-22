@@ -33,29 +33,23 @@ def rearrange_points(points_top, points_center, points_bottom):
     return new_top, points_center, new_bottom
 
 
-def get_center_of_mass(lines_top, lines_center, lines_bottom):
+def get_center_of_mass(lines_top, lines_bottom):
     top = [np.array(ndimage.center_of_mass(x)) for x in lines_top]
-    center = [np.array(ndimage.center_of_mass(x)) for x in lines_center]
     bottom = [np.array(ndimage.center_of_mass(x)) for x in lines_bottom]
-    return top, center, bottom
+    return top, bottom
 
 
-def rearrange_lines(lines_top, lines_center, lines_bottom):
-    def cm(lines_top, lines_center, lines_bottom):
-        cm_top, cm_center, cm_bottom = get_center_of_mass(
-            lines_top, lines_center, lines_bottom)
+def rearrange_lines(lines_top, lines_bottom):
+    def cm(lines_top, lines_bottom):
+        cm_top, cm_bottom = get_center_of_mass(
+            lines_top, lines_bottom)
         top = list(zip(cm_top, lines_top))
-        center = list(zip(cm_center, lines_center))
         bottom = list(zip(cm_bottom, lines_bottom))
-        return top, center, bottom
-    top, center, bottom = cm(lines_top, lines_center, lines_bottom)
-    lines_top = [
-        sorted(top, key=lambda x: np.linalg.norm(с[0] - x[0]))[0][1]
-        for с in center
-    ]
+        return top, bottom
+    top, bottom = cm(lines_top, lines_bottom)
     lines_bottom = [
         sorted(bottom, key=lambda x: np.linalg.norm(с[0] - x[0]))[0][1]
-        for с in center
+        for с in top
     ]
 
     _, h, w, _ = lines_top[0].shape
@@ -82,11 +76,10 @@ def rearrange_lines(lines_top, lines_center, lines_bottom):
                 return -x[0][2]
             rotation = 90
 
-    top, center, bottom = cm(lines_top, lines_center, lines_bottom)
+    top, bottom = cm(lines_top, lines_bottom)
     lines_top = [t[1] for t in sorted(top, key=sort_key)]
-    lines_center = [c[1] for c in sorted(center, key=sort_key)]
     lines_bottom = [b[1] for b in sorted(bottom, key=sort_key)]
-    return lines_top, lines_center, lines_bottom, rotation
+    return lines_top, lines_bottom, rotation
 
 
 def get_sort_ids(center, vector, array):
@@ -451,14 +444,13 @@ class CropRotateAndZoomLines(BaseWorkersPool):
             mask_mean_ts = dt.now()
             try:
                 top = thresholded(mask[:, :, :, 0:1])
-                center = thresholded(mask[:, :, :, 1:2])
-                bottom = thresholded(mask[:, :, :, 2:3])
+                bottom = thresholded(mask[:, :, :, 1:2])
             except TypeError:
                 exit(0)
             self.timers['mask_mean'] += dt.now() - mask_mean_ts
 
             r = pool.apply_async(rearrange_lines, (
-                label_layer(top), label_layer(center), label_layer(bottom)))
+                label_layer(top), label_layer(bottom)))
             async_rearranged.append(r)
 
         slices_ts = dt.now()
@@ -468,14 +460,14 @@ class CropRotateAndZoomLines(BaseWorkersPool):
         for paragraph_id, _ in enumerate(zip(*arrays)):
             for array_id in range(len(arrays)):
                 result[array_id].append([])
-            top_mask, center_mask, bottom_mask, rotation = (
+            top_mask, bottom_mask, rotation = (
                 async_rearranged[paragraph_id].get())
             for line_id in range(len(top_mask)):
                 for array_id in range(len(arrays)):
                     result[array_id][paragraph_id].append(None)
                 index = (paragraph_id, line_id)
                 r = pool.apply_async(self._func1, (
-                    top_mask[line_id], center_mask[line_id], bottom_mask[line_id]))
+                    top_mask[line_id], bottom_mask[line_id]))
                 async_slices.append((index, r, rotation))
 
         self.timers['rearrange'] += dt.now() - rearrange_ts
@@ -500,14 +492,13 @@ class CropRotateAndZoomLines(BaseWorkersPool):
         return result
 
     @staticmethod
-    def _func1(top_mask, center_mask, bottom_mask):
+    def _func1(top_mask, bottom_mask):
         _, top_y, top_x, _ = ndimage.find_objects(top_mask)[0]
-        _, center_y, center_x, _ = ndimage.find_objects(center_mask)[0]
         _, bottom_y, bottom_x, _ = ndimage.find_objects(bottom_mask)[0]
-        y = slice(min(top_y.start, center_y.start, bottom_y.start),
-                  max(top_y.stop, center_y.stop, bottom_y.stop))
-        x = slice(min(top_x.start, center_x.start, bottom_x.start),
-                  max(top_x.stop, center_x.stop, bottom_x.stop))
+        y = slice(min(top_y.start, bottom_y.start),
+                  max(top_y.stop, bottom_y.stop))
+        x = slice(min(top_x.start, bottom_x.start),
+                  max(top_x.stop, bottom_x.stop))
         return y, x
 
     @staticmethod
