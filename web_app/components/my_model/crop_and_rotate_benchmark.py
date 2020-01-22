@@ -43,9 +43,8 @@ def benchmark_one(dirpath, workers_count):
         layers = train_dataset.get_images(i)
         monochrome = to_array(layers['image_monochrome'])
         line_top = to_array(layers['line_top'])
-        line_center = to_array(layers['line_center'])
         line_bottom = to_array(layers['line_bottom'])
-        line = np.concatenate([line_top, line_center, line_bottom], axis=3)
+        line = np.concatenate([line_top, line_bottom], axis=3)
         bits_and_letter_spacings = np.concatenate([
             *[to_array(layers[f'bit_{i}']) for i in range(8)],
             to_array(layers['letter_spacing'])
@@ -75,18 +74,16 @@ def benchmark_one(dirpath, workers_count):
 
             cr_monochrome = from_array(paragraphs[0][j])
             cr_line_top = from_array(paragraphs[1][j], ch=0)
-            cr_line_center = from_array(paragraphs[1][j], ch=1)
-            cr_line_bottom = from_array(paragraphs[1][j], ch=2)
+            cr_line_bottom = from_array(paragraphs[1][j], ch=1)
             cr_bits = [from_array(paragraphs[2][j], ch=i) for i in range(8)]
             cr_letter_spacing = from_array(paragraphs[2][j], ch=8)
 
             cr_monochrome.save(dirpath / f'{i}_{j}_0_monochrome.png')
             cr_line_top.save(dirpath / f'{i}_{j}_1_line_top.png')
-            cr_line_center.save(dirpath / f'{i}_{j}_2_line_center.png')
-            cr_line_bottom.save(dirpath / f'{i}_{j}_3_line_bottom.png')
+            cr_line_bottom.save(dirpath / f'{i}_{j}_2_line_bottom.png')
             for k, bit in enumerate(cr_bits):
-                bit.save(dirpath / f'{i}_{j}_4_bit_{k}.png')
-            cr_letter_spacing.save(dirpath / f'{i}_{j}_5_letter_spacing.png')
+                bit.save(dirpath / f'{i}_{j}_3_bit_{k}.png')
+            cr_letter_spacing.save(dirpath / f'{i}_{j}_4_letter_spacing.png')
 
             text_file = open(dirpath / f'{i}_{j}_0_text.txt', 'w', encoding='utf-8')
             for k in range(len(lines[j])):
@@ -96,7 +93,7 @@ def benchmark_one(dirpath, workers_count):
                     bit_lines[j][k][:, :, :, 8:9],
                 ], axis=1)
                 cr_line = from_array(concatenated)
-                cr_line.save(dirpath / f'{i}_{j}_6_{k}_line.png')
+                cr_line.save(dirpath / f'{i}_{j}_5_{k}_line.png')
                 print(text[j][k], file=text_file)
             text_file.close()
 

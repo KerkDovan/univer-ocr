@@ -90,6 +90,14 @@
             "program": "${workspaceRoot}/run.py",
             "args": ["crop_and_rotate_benchmark"],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Predict - GPU",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceRoot}/run.py",
+            "args": ["predict", "True"],
+            "console": "integratedTerminal"
         }
     ]
 }

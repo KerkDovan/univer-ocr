@@ -457,7 +457,7 @@ class CropRotateAndZoomLines(BaseWorkersPool):
 
         async_slices = []
         result = [[] for array in arrays]
-        for paragraph_id, _ in enumerate(zip(*arrays)):
+        for paragraph_id, _ in enumerate(zip(masks, *arrays)):
             for array_id in range(len(arrays)):
                 result[array_id].append([])
             top_mask, bottom_mask, rotation = (

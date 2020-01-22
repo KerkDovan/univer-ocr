@@ -652,8 +652,8 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
             predictions = get_from_context(context, ['char_pred_cpu'])[0]
             result = pred_to_text(predictions)
             put_to_context(context, ['text'], [result])
-        pred_to_text = RawFunctionComponent(pred_to_text_func)
-        return pred_to_text
+        pred_to_text_component = RawFunctionComponent(pred_to_text_func)
+        return pred_to_text_component
 
     if mode is Modes.TRAIN_ALL:
         components = {

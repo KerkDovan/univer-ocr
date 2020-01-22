@@ -59,6 +59,7 @@ def main(use_gpu=False, filename=None):
     pred_text = context['text']
 
     save_path = PREDICTION_RESULT_PATH
+    save_path.mkdir(parents=True, exist_ok=True)
     X_image.save(save_path / 'X.png')
 
     with open(save_path / 'result.txt', 'w') as fp:
