@@ -29,10 +29,11 @@ class Losses:
         }
 
     def get_better_weights(self, epoch):
+        def cond(a, b):
+            return np.mean(a) < np.mean(b) or not np.isnan(a) and np.isnan(b)
         result = [
             name for name in self.model_names
-            if (np.mean(self.val_losses[name]) <
-                np.mean(self.val_best_losses[name]))
+            if cond(self.val_losses[name], self.val_best_losses[name])
         ]
         for name in result:
             self.val_best_losses[name] = self.val_losses[name]
@@ -143,12 +144,36 @@ class Trainer:
         self.save_pictures_func = save_pictures_func
 
     def train(self, num_epochs):
+        if self.show_progress_bar:
+            def pb(iterable, *args, **kwargs):
+                return tqdm(iterable, *args, **kwargs)
+        else:
+            def pb(iterable, *args, **kwargs):
+                return iterable
+
         model_names = list(self.models.keys())
         outputs_cnts = {
             name: model.get_outputs_count()
             for name, model in self.models.items()
         }
         losses = Losses(model_names, outputs_cnts)
+
+        print('Precomputing losses')
+        ts = dt.now()
+        losses.reset()
+        for i in pb(range(len(self.validation_dataset)), desc='Precomputing', ascii=True):
+            context = self.make_context_func(
+                self.validation_dataset.get, (i,))
+            self.model_system.test(context)
+            losses.validation(context['losses'])
+            if self.save_pictures_func is not None:
+                self.save_pictures_func(0, 'precomputing', i, context)
+            del context
+            gc.collect()
+        losses.print(left_margin=2)
+        losses.next()
+        print(f'Time required: {dt.now() - ts}')
+        print(f'\n')
 
         def get_weights():
             return {
@@ -184,13 +209,6 @@ class Trainer:
             ts = dt.now()
 
             losses.reset()
-
-            if self.show_progress_bar:
-                def pb(iterable, *args, **kwargs):
-                    return tqdm(iterable, *args, **kwargs)
-            else:
-                def pb(iterable, *args, **kwargs):
-                    return iterable
 
             shuffle(train_random_order)
             iters_cnt = len(self.train_dataset)
