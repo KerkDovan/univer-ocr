@@ -110,13 +110,17 @@ def track_method(event):
 
 
 def track_function(name, event, progress_tracker):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            progress_tracker.start_tracking(name, event)
-            result = func(*args, **kwargs)
-            progress_tracker.stop_tracking(name, event)
-            return result
-        return wrapper
-    progress_tracker.register_layer(name)
+    if progress_tracker is not None:
+        def decorator(func):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                progress_tracker.start_tracking(name, event)
+                result = func(*args, **kwargs)
+                progress_tracker.stop_tracking(name, event)
+                return result
+            return wrapper
+        progress_tracker.register_layer(name)
+    else:
+        def decorator(func):
+            return func
     return decorator

@@ -43,6 +43,8 @@ TRAIN_PROGRESS_PATH = (
     GENERATED_FILES_PATH / 'train_progress')
 SINGLE_ITERATION_FROM_TRAIN_PROGRESS_PATH = (
     GENERATED_FILES_PATH / 'single_iteration_from_train_progress')
+PREDICTION_SOURCE_PATH = (
+    GENERATED_FILES_PATH / 'prediction_source')
 PREDICTION_RESULT_PATH = (
     GENERATED_FILES_PATH / 'prediction_result')
 LAYERS_OUTPUTS_PATH = (

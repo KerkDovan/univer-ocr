@@ -49,6 +49,9 @@ class BaseSelector:
     def get(self):
         raise NotImplementedError()
 
+    def get_X(self):
+        raise NotImplementedError()
+
     def put(self, pred):
         raise NotImplementedError()
 
@@ -62,6 +65,9 @@ class StringSelector(BaseSelector):
 
     def get(self):
         yield self.context[self.X_label], self.context[self.y_label]
+
+    def get_X(self):
+        yield self.context[self.X_label]
 
     def put(self, pred):
         self.context[self.pred_label] = pred
@@ -77,6 +83,10 @@ class IterableSelector(BaseSelector):
     def get(self):
         for X, y in zip(self.context[self.X_label], self.context[self.y_label]):
             yield X, y
+
+    def get_X(self):
+        for X in self.context[self.X_label]:
+            yield X
 
     def put(self, pred):
         if self.pred_label not in self.context.keys():
@@ -125,7 +135,7 @@ class ModelComponent(BaseComponent):
 
     def predict(self, context):
         self.selector(context)
-        for X, _ in self.selector.get():
+        for X in self.selector.get_X():
             context['prediction'][self.name] = self.model.predict(X)
             result = [
                 self.model.layers_outputs[k]
