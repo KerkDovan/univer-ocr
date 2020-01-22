@@ -9,7 +9,7 @@ from time import sleep
 import numpy as np
 from scipy import ndimage
 
-from ..primitives import BITS_COUNT, CHARS, CHARS_IDS, decode_char
+from ..primitives import BITS_COUNT, CHARS, CHARS_IDS, decode_char, are_similar
 from .parallelism import ERRORS_TO_STOP, MP
 
 
@@ -607,7 +607,7 @@ class PredToText(BaseWorkersPool):
                 prev_char = None
                 continue
             cur_char = CHARS[char_id]
-            if cur_char == prev_char:
+            if are_similar(cur_char, prev_char):
                 continue
             result += cur_char
             prev_char = cur_char

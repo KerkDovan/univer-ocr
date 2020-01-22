@@ -3,11 +3,43 @@ from math import ceil, log
 
 from PIL.ImageFont import truetype
 
+_______ids_______ = u'012345678901234567890123456789012'
 RUSSIAN_LOWERCASE = u'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'
 RUSSIAN_UPPERCASE = u'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
+ENGLISH_LOWERCASE = u'abcdefghijklmnopqrstuvwxyz'
+ENGLISH_UPPERCASE = u'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 RUSSIAN = RUSSIAN_LOWERCASE + RUSSIAN_UPPERCASE
-CHARS = '\t' + ' ' + RUSSIAN + string.digits + string.ascii_letters + string.punctuation
+ENGLISH = ENGLISH_LOWERCASE + ENGLISH_UPPERCASE
+CHARS = '\t' + ' ' + RUSSIAN + string.digits + ENGLISH + string.punctuation
 CHARS_IDS = {char: i for i, char in enumerate(CHARS)}
+
+SIMILAR_CHARS_PAIRS_LIST = [
+    # Lowercase
+    (RUSSIAN_LOWERCASE[0], ENGLISH_LOWERCASE[0]),
+    (RUSSIAN_LOWERCASE[5], ENGLISH_LOWERCASE[4]),
+    (RUSSIAN_LOWERCASE[15], ENGLISH_LOWERCASE[14]),
+    (RUSSIAN_LOWERCASE[17], ENGLISH_LOWERCASE[15]),
+    (RUSSIAN_LOWERCASE[18], ENGLISH_LOWERCASE[2]),
+    (RUSSIAN_LOWERCASE[20], ENGLISH_LOWERCASE[24]),
+    (RUSSIAN_LOWERCASE[22], ENGLISH_LOWERCASE[23]),
+    # Uppercase
+    (RUSSIAN_UPPERCASE[0], ENGLISH_UPPERCASE[0]),
+    (RUSSIAN_UPPERCASE[2], ENGLISH_UPPERCASE[1]),
+    (RUSSIAN_UPPERCASE[5], ENGLISH_UPPERCASE[4]),
+    (RUSSIAN_UPPERCASE[11], ENGLISH_UPPERCASE[10]),
+    (RUSSIAN_UPPERCASE[13], ENGLISH_UPPERCASE[12]),
+    (RUSSIAN_UPPERCASE[15], ENGLISH_UPPERCASE[14]),
+    (RUSSIAN_UPPERCASE[14], ENGLISH_UPPERCASE[7]),
+    (RUSSIAN_UPPERCASE[17], ENGLISH_UPPERCASE[15]),
+    (RUSSIAN_UPPERCASE[18], ENGLISH_UPPERCASE[2]),
+    (RUSSIAN_UPPERCASE[19], ENGLISH_UPPERCASE[19]),
+    (RUSSIAN_UPPERCASE[22], ENGLISH_UPPERCASE[23]),
+]
+SIMILAR_CHARS = {
+    k: v
+    for v in SIMILAR_CHARS_PAIRS_LIST
+    for k in v
+}
 
 BITS_COUNT = ceil(log(len(CHARS) + 1, 2))
 
@@ -16,6 +48,10 @@ ENCODING_MAP = {
     for char_id, char in enumerate(CHARS)
 }
 DECODING_MAP = {encoded: char for char, encoded in ENCODING_MAP.items()}
+
+
+def are_similar(char1, char2):
+    return char1 in SIMILAR_CHARS.get(char2, ())
 
 
 def encode_char(char):
