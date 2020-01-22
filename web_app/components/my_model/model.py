@@ -409,7 +409,7 @@ class Modes(Enum):
     PREDICT = 5
 
 
-def make_context_maker(mode):
+def make_context_maker(mode=Modes.PREDICT):
     def to_gpu(arr):
         if CP.is_gpu_used:
             return CP.copy(arr)
@@ -564,6 +564,9 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
             if mode is Modes.TRAIN_LINE:
                 old_labels.pop()
                 new_labels.pop()
+            if mode is Modes.PREDICT:
+                old_labels = old_labels[:1]
+                new_labels = new_labels[:1]
             mask, *arrays = get_from_context(context, [
                 'paragraph_pred_cpu', *old_labels])
             results = make_subelements_divisible_by(
@@ -596,14 +599,15 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
 
         @track_function('LineCrop', 'forward', progress_tracker)
         def line_crop_func(context):
+            old_labels = ['cropped_monochrome_cpu', 'cropped_char_cpu']
+            new_labels = ['cropped_2_monochrome_cpu', 'cropped_2_char_cpu']
+            if mode is Modes.PREDICT:
+                old_labels = old_labels[:1]
+                new_labels = new_labels[:1]
             masks, *arrays = get_from_context(context, [
-                'line_pred_cpu',
-                'cropped_monochrome_cpu', 'cropped_char_cpu',
-            ])
+                'line_pred_cpu', *old_labels])
             results = crop_rotate_and_zoom_lines(masks, arrays)
-            put_to_context(context, [
-                'cropped_2_monochrome_cpu', 'cropped_2_char_cpu',
-            ], results)
+            put_to_context(context, new_labels, results)
         line_crop = RawFunctionComponent(line_crop_func)
         return line_crop
 
@@ -651,7 +655,7 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
         pred_to_text = RawFunctionComponent(pred_to_text_func)
         return pred_to_text
 
-    if mode in [Modes.TRAIN_ALL, Modes.PREDICT]:
+    if mode is Modes.TRAIN_ALL:
         components = {
             'Monochrome': make_monochrome_component(),
             'rename_monochrome': make_rename_in_context_component([
@@ -679,13 +683,37 @@ def make_model_system(input_shape, optimizer=None, progress_tracker=None, weight
             ]),
             'Char': make_char_component(),
         }
-        if mode is Modes.PREDICT:
-            components.update({
-                'move_from_gpu_char': make_move_from_gpu_component([
-                    ('char_pred', 'char_pred_cpu'),
-                ]),
-                'PredToText': make_pred_to_text_component(),
-            })
+        return get_result(components)
+
+    if mode is Modes.PREDICT:
+        components = {
+            'Monochrome': make_monochrome_component(),
+            'rename_monochrome': make_rename_in_context_component([
+                ('monochrome_pred', 'paragraph_X'),
+            ]),
+            'Paragraph': make_paragraph_component(),
+            'move_from_gpu_paragraph': make_move_from_gpu_component([
+                ('monochrome_pred', 'monochrome_pred_cpu'),
+                ('paragraph_pred', 'paragraph_pred_cpu'),
+            ]),
+            'ParagraphCrop': make_paragraph_crop_component(),
+            'move_to_gpu_paragraph_crop': make_move_to_gpu_component([
+                ('cropped_monochrome_cpu', 'cropped_monochrome'),
+            ]),
+            'Line': make_line_component(),
+            'move_from_gpu_line': make_move_from_gpu_component([
+                ('line_pred', 'line_pred_cpu'),
+            ]),
+            'LineCrop': make_line_crop_component(),
+            'move_to_gpu_char_label': make_move_to_gpu_component([
+                ('cropped_2_monochrome_cpu', 'cropped_2_monochrome'),
+            ]),
+            'Char': make_char_component(),
+            'move_from_gpu_char': make_move_from_gpu_component([
+                ('char_pred', 'char_pred_cpu'),
+            ]),
+            'PredToText': make_pred_to_text_component(),
+        }
         return get_result(components)
 
     import time
