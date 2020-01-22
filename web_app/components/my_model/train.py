@@ -1,6 +1,9 @@
 import json
 from pprint import pprint
 
+import numpy as np
+from PIL import Image
+
 import numba
 
 from ..nn.gpu import CP
@@ -152,8 +155,21 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
                         pred[i].save(sp / f'{prefix}{paragraph_id}{line_id}2_{i}_3_pred.png')
                         th[i].save(sp / f'{prefix}{paragraph_id}{line_id}2_{i}_4_th.png')
 
+                def save_concated(name, concatenated, paragraph_id, line_id):
+                    sp = TRAIN_PROGRESS_PATH / f'{mode.name}'.lower() / f'{name}'
+                    sp.mkdir(parents=True, exist_ok=True)
+                    prefix = f'{epoch}_{phase}_{index}_'
+                    paragraph_id = '' if paragraph_id is None else f'{paragraph_id}_'
+                    line_id = '' if line_id is None else f'{line_id}_'
+                    concatenated.save(sp / f'{prefix}{paragraph_id}{line_id}.png')
+
                 def delist(lst):
                     return [x[0] for x in lst]
+
+                def to_image(array):
+                    image = (array * 255).astype(np.uint8)
+                    image = Image.fromarray(image)
+                    return image
 
                 def save_monochrome():
                     X = [decode_X(context['monochrome_X'])]
@@ -193,13 +209,25 @@ def train_model(use_gpu=False, show_progress_bar=False, save_train_progress=Fals
                     c2_m_y = context['cropped_2_monochrome_cpu']
                     c_l = context['char_labels_cpu']
                     c_pred = context['char_pred']
+
                     for paragraph_id in range(len(c2_m_y)):
                         for line_id in range(len(c2_m_y[paragraph_id])):
-                            X, _ = decode_y(c2_m_y[paragraph_id][line_id])
-                            y, _ = decode_y(c_l[paragraph_id][line_id], four_dims=False)
-                            pred, th = decode_y(c_pred[paragraph_id][line_id], four_dims=False)
-                            save('char', X, y, pred, th,
-                                 paragraph_id=paragraph_id, line_id=line_id)
+                            c_pred_np = CP.asnumpy(c_pred[paragraph_id][line_id])
+                            c_pred_max = np.zeros_like(c_pred_np)
+                            for batch in range(c_pred_np.shape[0]):
+                                max_val = np.max(c_pred_np[batch, :])
+                                c_pred_max[batch, :] = c_pred_np[batch, :] == max_val
+                            c0 = c2_m_y[paragraph_id][line_id][0, :, :, :]
+                            c0 = np.concatenate([c0, c0, c0], axis=2)
+                            c1 = c_pred_max.transpose()
+                            c1 = np.reshape(c1, (*c1.shape, 1))
+                            c2 = c_l[paragraph_id][line_id].transpose()
+                            c2 = np.reshape(c2, (*c2.shape, 1))
+                            c3 = c1 * c2
+                            concated = np.concatenate([c1, c2, c3], axis=2)
+                            concated = np.concatenate([c0, concated], axis=0)
+                            image = to_image(concated)
+                            save_concated('char', image, paragraph_id, line_id)
 
                 if mode is Modes.TRAIN_CHAR:
                     save_char()
