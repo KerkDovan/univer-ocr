@@ -67,6 +67,7 @@ class LayeredImage:
             name: ImageDraw.ImageDraw(layer)
             for name, layer in self.demo.items()
         }
+        self.paragraphs_added = 0
 
     def get_raw(self):
         return self.layers
@@ -133,6 +134,7 @@ class LayeredImage:
                 # print(f'Number of retries exceeded')
                 return
             retries += 1
+        self.paragraphs_added += 1
         x, y = x + margin, y + margin
 
         self._paragraph((x, y, x + t_width, y + t_height))
@@ -267,7 +269,7 @@ def random_font(min_size=12, max_size=48):
 
 
 def random_text(min_wrap=30, max_wrap=100):
-    if np.random.choice([True, False], p=[0.1, 0.9]):
+    if True or np.random.choice([True, False], p=[0.1, 0.9]):
         text = ' '.join(
             ''.join(random.choice(CHARS[1:]) for i in range(random.randint(1, 10)))
             for j in range(random.randint(3, 30)))

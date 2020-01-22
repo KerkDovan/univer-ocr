@@ -10,10 +10,11 @@ from .constants import LAYER_TAGS, LAYER_NAMES
 
 
 def generate_picture(width, height, rotate=False):
-    bg_color = tuple(random.randint(1, 255) for _ in range(4))
+    bg_color = tuple(random.randint(255, 255) for _ in range(4))
     layers = LayeredImage(width, height, bg_color)
-    for i in range(30):
-        layers.add_paragraph(random_text(), random_font(16, 16))
+    while layers.paragraphs_added == 0:
+        for i in range(100):
+            layers.add_paragraph(random_text(), random_font(12, 36))
     if rotate:
         layers = layers.rotate(random.uniform(0, 360))
     layers = layers.make_divisible_by(16, 16)
