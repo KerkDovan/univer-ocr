@@ -3,7 +3,7 @@ Faker==4.0.0
 Flask-SocketIO==4.2.1
 Flask==1.1.1
 numba==0.47.0
-numpy==1.18.1
+numpy==1.22.0
 Pillow==6.2.1
 scipy==1.4.1
 socketIO-client==0.7.2
