@@ -5,6 +5,6 @@ Flask==1.1.1
 numba==0.47.0
 numpy==1.18.1
 Pillow==6.2.1
-scipy==1.4.1
+scipy==1.10.0
 socketIO-client==0.7.2
 tqdm==4.41.1
